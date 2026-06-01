@@ -66,7 +66,7 @@ export function WeeklyReports() {
   const [logs, setLogs] = useState<ClockLog[]>([]);
   const [filterStaff, setFilterStaff] = useState('');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [viewMode, setViewMode] = useState<'table' | 'chart'>('table');
 
   // Date range export state

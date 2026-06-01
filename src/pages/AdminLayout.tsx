@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { LayoutDashboard, Users, Calendar, Send, LogOut, Clock, FileText, History, Settings } from 'lucide-react';
 import { AdminDashboard } from './AdminDashboard';
 import { StaffManagement } from './StaffManagement';
@@ -26,6 +26,10 @@ const TABS = [
 
 export function AdminLayout({ onSignOut, initialTab = 'dashboard' }: AdminLayoutProps) {
   const [activeTab, setActiveTab] = useState(initialTab);
+
+  useEffect(() => {
+    setActiveTab(initialTab);
+  }, [initialTab]);
 
   return (
     <div className="min-h-screen bg-moja-bg">

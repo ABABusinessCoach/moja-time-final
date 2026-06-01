@@ -50,11 +50,7 @@ export default function App() {
   }, []);
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-moja-bg flex items-center justify-center">
-        <div className="w-10 h-10 border-4 border-moja-blue border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
+    return <div className="min-h-screen bg-moja-bg" />;
   }
 
   if (route.page === 'register') {

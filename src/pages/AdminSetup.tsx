@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase';
-import { Mail, Lock, User, Clock } from 'lucide-react';
+import { supabase, callEdgeFunction } from '../lib/supabase';
+import { Mail, Lock, User, Clock, ArrowLeft } from 'lucide-react';
 import { BrandAccents, BrandDots } from '../components/BrandAccents';
 
 interface AdminSetupProps {
@@ -12,13 +12,17 @@ export function AdminSetup({ onComplete }: AdminSetupProps) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [checking, setChecking] = useState(true);
+  const [adminExists, setAdminExists] = useState(false);
 
   useEffect(() => {
     async function checkExistingAdmin() {
-      const { data } = await supabase.from('admins').select('id').limit(1);
-      if (data && data.length > 0) {
-        window.location.hash = '#/admin';
-        return;
+      try {
+        const { data } = await supabase.from('admins').select('id').limit(1);
+        if (data && data.length > 0) {
+          setAdminExists(true);
+        }
+      } catch {
+        // If we can't check, let the user try — the edge function will block duplicates
       }
       setChecking(false);
     }
@@ -30,33 +34,28 @@ export function AdminSetup({ onComplete }: AdminSetupProps) {
     setError('');
     setLoading(true);
 
-    const { data, error: signUpError } = await supabase.auth.signUp({
+    const result = await callEdgeFunction('/setup-admin', {
+      name: form.name,
       email: form.email,
       password: form.password,
     });
 
-    if (signUpError) {
-      if (signUpError.message === 'Invalid API key' || signUpError.message.includes('already registered')) {
-        setError('An account with this email already exists. Please go to Admin Login instead.');
-      } else {
-        setError(signUpError.message);
-      }
+    if (!result.success) {
+      setError(result.message || 'Failed to create admin account');
       setLoading(false);
       return;
     }
 
-    if (data.user) {
-      const { error: adminError } = await supabase.from('admins').insert({
-        id: data.user.id,
-        email: form.email,
-        name: form.name,
-      });
+    // Sign in with the newly created account
+    const { error: signInError } = await supabase.auth.signInWithPassword({
+      email: form.email,
+      password: form.password,
+    });
 
-      if (adminError) {
-        setError(adminError.message);
-        setLoading(false);
-        return;
-      }
+    if (signInError) {
+      setError('Account created but sign-in failed. Please go to Admin Login.');
+      setLoading(false);
+      return;
     }
 
     onComplete();
@@ -64,9 +63,28 @@ export function AdminSetup({ onComplete }: AdminSetupProps) {
   }
 
   if (checking) {
+    return <div className="min-h-screen bg-moja-bg" />;
+  }
+
+  if (adminExists) {
     return (
-      <div className="min-h-screen bg-moja-bg flex items-center justify-center">
-        <div className="w-10 h-10 border-4 border-moja-blue border-t-transparent rounded-full animate-spin" />
+      <div className="min-h-screen bg-moja-bg relative flex items-center justify-center p-6">
+        <BrandAccents />
+        <div className="relative z-10 w-full max-w-md text-center">
+          <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-8 space-y-5">
+            <div className="inline-flex items-center justify-center w-16 h-16 bg-moja-blue rounded-2xl mx-auto">
+              <Clock className="w-8 h-8 text-white" />
+            </div>
+            <h2 className="text-2xl font-bold text-moja-blue">Admin Already Exists</h2>
+            <p className="text-moja-blue/60 font-semibold">An admin account has already been created. Please use the login page to sign in.</p>
+            <a
+              href="#/admin"
+              className="block w-full h-[60px] leading-[60px] bg-moja-orange hover:bg-moja-orange/90 active:scale-[0.98] text-white font-bold text-lg rounded-xl transition-all text-center"
+            >
+              Go to Admin Login
+            </a>
+          </div>
+        </div>
       </div>
     );
   }
@@ -146,6 +164,16 @@ export function AdminSetup({ onComplete }: AdminSetupProps) {
             {loading ? 'Creating Admin...' : 'Create Admin Account'}
           </button>
         </form>
+
+        <div className="mt-6 text-center">
+          <a
+            href="#/admin"
+            className="inline-flex items-center gap-2 text-sm text-moja-blue/60 hover:text-moja-aqua transition-colors font-semibold"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Back to Admin Login
+          </a>
+        </div>
       </div>
     </div>
   );

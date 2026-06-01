@@ -2,10 +2,8 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 import bcrypt from "npm:bcryptjs@2.4.3";
 
-const ALLOWED_ORIGIN = "https://time.mojakids.com";
-
 const corsHeaders = {
-  "Access-Control-Allow-Origin": ALLOWED_ORIGIN,
+  "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
   "Access-Control-Allow-Headers":
     "Content-Type, Authorization, X-Client-Info, Apikey",
@@ -155,6 +153,161 @@ Deno.serve(async (req: Request) => {
       req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
       req.headers.get("cf-connecting-ip") ||
       "unknown";
+
+    // --- ADMIN SETUP (first admin only) ---
+    if (req.method === "POST" && path === "/setup-admin") {
+      const { name, email, password } = await req.json();
+
+      if (!name || !email || !password) {
+        return json({ success: false, message: "Name, email, and password are required" }, 400);
+      }
+
+      if (!isValidEmail(email)) {
+        return json({ success: false, message: "Invalid email format" }, 400);
+      }
+
+      if (password.length < 6) {
+        return json({ success: false, message: "Password must be at least 6 characters" }, 400);
+      }
+
+      const { data: existingAdmins } = await supabase
+        .from("admins")
+        .select("id")
+        .limit(1);
+
+      if (existingAdmins && existingAdmins.length > 0) {
+        return json({ success: false, message: "An admin account already exists" }, 403);
+      }
+
+      const { data: authData, error: signUpError } = await supabase.auth.admin.createUser({
+        email,
+        password,
+        email_confirm: true,
+      });
+
+      if (signUpError || !authData.user) {
+        return json({
+          success: false,
+          message: signUpError?.message || "Failed to create account",
+        }, 400);
+      }
+
+      const { error: adminError } = await supabase.from("admins").insert({
+        id: authData.user.id,
+        email,
+        name,
+      });
+
+      if (adminError) {
+        await supabase.auth.admin.deleteUser(authData.user.id);
+        return json({ success: false, message: "Failed to create admin record" }, 500);
+      }
+
+      return json({ success: true, message: "Admin account created successfully" });
+    }
+
+    // --- CREATE ADDITIONAL ADMIN (requires existing admin) ---
+    if (req.method === "POST" && path === "/admin/create-admin") {
+      const adminId = await verifyAdmin(supabase, req);
+      if (!adminId) {
+        return json({ success: false, message: "Unauthorized" }, 401);
+      }
+
+      const { name, email, password } = await req.json();
+
+      if (!name || !email || !password) {
+        return json({ success: false, message: "Name, email, and password are required" }, 400);
+      }
+
+      if (!isValidEmail(email)) {
+        return json({ success: false, message: "Invalid email format" }, 400);
+      }
+
+      if (password.length < 6) {
+        return json({ success: false, message: "Password must be at least 6 characters" }, 400);
+      }
+
+      const { data: authData, error: signUpError } = await supabase.auth.admin.createUser({
+        email,
+        password,
+        email_confirm: true,
+      });
+
+      if (signUpError || !authData.user) {
+        return json({
+          success: false,
+          message: signUpError?.message || "Failed to create account",
+        }, 400);
+      }
+
+      const { error: adminError } = await supabase.from("admins").insert({
+        id: authData.user.id,
+        email,
+        name,
+      });
+
+      if (adminError) {
+        await supabase.auth.admin.deleteUser(authData.user.id);
+        return json({ success: false, message: adminError.message || "Failed to create admin record" }, 500);
+      }
+
+      return json({ success: true, message: `Admin account created for ${email}` });
+    }
+
+    // --- LIST ADMINS ---
+    if (req.method === "GET" && path === "/admin/list-admins") {
+      const adminId = await verifyAdmin(supabase, req);
+      if (!adminId) {
+        return json({ success: false, message: "Unauthorized" }, 401);
+      }
+
+      const { data: admins } = await supabase
+        .from("admins")
+        .select("id, email, name, created_at")
+        .order("created_at");
+
+      return json({ success: true, admins: admins || [] });
+    }
+
+    // --- REMOVE ADMIN ---
+    if (req.method === "POST" && path === "/admin/remove-admin") {
+      const adminId = await verifyAdmin(supabase, req);
+      if (!adminId) {
+        return json({ success: false, message: "Unauthorized" }, 401);
+      }
+
+      const { admin_id } = await req.json();
+
+      if (!admin_id) {
+        return json({ success: false, message: "admin_id is required" }, 400);
+      }
+
+      if (admin_id === adminId) {
+        return json({ success: false, message: "You cannot remove yourself" }, 400);
+      }
+
+      const { data: adminCount } = await supabase
+        .from("admins")
+        .select("id")
+        .limit(2);
+
+      if (!adminCount || adminCount.length <= 1) {
+        return json({ success: false, message: "Cannot remove the last admin" }, 400);
+      }
+
+      const { error: deleteAdminError } = await supabase
+        .from("admins")
+        .delete()
+        .eq("id", admin_id);
+
+      if (deleteAdminError) {
+        return json({ success: false, message: "Failed to remove admin" }, 500);
+      }
+
+      await supabase.auth.admin.deleteUser(admin_id);
+
+      return json({ success: true, message: "Admin removed" });
+    }
 
     // --- PIN LOOKUP (with rate limiting) ---
     if (req.method === "POST" && path === "/lookup-pin") {
@@ -415,11 +568,13 @@ Deno.serve(async (req: Request) => {
         return json({ success: false, message: "Too many attempts. Please wait and try again." }, 429);
       }
 
-      const { pin } = await req.json();
+      const { pin, break_type } = await req.json();
 
       if (!pin || pin.length !== 4 || !/^\d{4}$/.test(pin)) {
         return json({ success: false, message: "PIN must be exactly 4 digits" }, 400);
       }
+
+      const type = break_type === "lunch" ? "lunch" : "break";
 
       const { data: activeStaff } = await supabase
         .from("staff")
@@ -469,6 +624,7 @@ Deno.serve(async (req: Request) => {
         clock_log_id: openLog.id,
         staff_id: matchedStaff.id,
         break_start: now.toISOString(),
+        break_type: type,
       });
 
       await supabase
@@ -480,6 +636,7 @@ Deno.serve(async (req: Request) => {
         success: true,
         timestamp: now.toISOString(),
         action: "start_break",
+        break_type: type,
         staff_name: matchedStaff.name,
       });
     }

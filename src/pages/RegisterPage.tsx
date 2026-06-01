@@ -68,11 +68,7 @@ export function RegisterPage({ token }: RegisterPageProps) {
   }
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-moja-bg flex items-center justify-center">
-        <div className="w-8 h-8 border-4 border-moja-blue border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
+    return <div className="min-h-screen bg-moja-bg" />;
   }
 
   if (!valid) {

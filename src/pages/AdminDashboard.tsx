@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase, callEdgeFunction } from '../lib/supabase';
+import { supabase } from '../lib/supabase';
 import type { Staff, ClockLog } from '../lib/types';
 import { Users, Clock, UserCheck, UserX, AlertTriangle, LogOut } from 'lucide-react';
 import { Toast } from '../components/Toast';
@@ -26,7 +26,7 @@ export function AdminDashboard() {
   const [staffList, setStaffList] = useState<Staff[]>([]);
   const [recentLogs, setRecentLogs] = useState<(ClockLog & { staff: { name: string } })[]>([]);
   const [openLogs, setOpenLogs] = useState<Map<string, string>>(new Map());
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [forceClockingOut, setForceClockingOut] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [maxShiftHours, setMaxShiftHours] = useState(12);
@@ -139,31 +139,7 @@ export function AdminDashboard() {
   }
 
   if (loading) {
-    return (
-      <div className="space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {[1, 2, 3].map(i => (
-            <div key={i} className="bg-white rounded-xl border border-gray-100 p-6 shadow-sm animate-pulse">
-              <div className="flex items-center gap-4">
-                <div className="w-14 h-14 bg-gray-100 rounded-xl" />
-                <div className="space-y-2">
-                  <div className="h-7 w-12 bg-gray-100 rounded" />
-                  <div className="h-4 w-20 bg-gray-100 rounded" />
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-        <div className="bg-white rounded-xl border border-gray-100 p-6 shadow-sm animate-pulse">
-          <div className="h-6 w-48 bg-gray-100 rounded mb-4" />
-          <div className="space-y-3">
-            {[1, 2, 3].map(i => (
-              <div key={i} className="h-12 bg-gray-50 rounded-lg" />
-            ))}
-          </div>
-        </div>
-      </div>
-    );
+    return null;
   }
 
   return (

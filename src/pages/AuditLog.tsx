@@ -12,7 +12,7 @@ const ACTION_LABELS: Record<string, { label: string; color: string; icon: typeof
 
 export function AuditLog() {
   const [logs, setLogs] = useState<AuditLogEntry[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     loadLogs();
@@ -46,7 +46,7 @@ export function AuditLog() {
   }
 
   if (loading) {
-    return <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-4 border-moja-blue border-t-transparent rounded-full animate-spin" /></div>;
+    return null;
   }
 
   return (

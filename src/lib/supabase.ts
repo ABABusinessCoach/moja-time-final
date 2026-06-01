@@ -7,12 +7,12 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 export const EDGE_FUNCTION_URL = `${supabaseUrl}/functions/v1/clock-operations`;
 
-export async function callEdgeFunction(path: string, body?: Record<string, unknown>) {
+export async function callEdgeFunction(path: string, body?: Record<string, unknown>, authToken?: string) {
   const response = await fetch(`${EDGE_FUNCTION_URL}${path}`, {
     method: body ? 'POST' : 'GET',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${supabaseAnonKey}`,
+      'Authorization': `Bearer ${authToken || supabaseAnonKey}`,
     },
     body: body ? JSON.stringify(body) : undefined,
   });

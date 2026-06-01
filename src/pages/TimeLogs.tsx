@@ -7,7 +7,7 @@ import { Toast } from '../components/Toast';
 export function TimeLogs() {
   const [staffList, setStaffList] = useState<Staff[]>([]);
   const [logs, setLogs] = useState<(ClockLog & { staff: { name: string } })[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   // Modal state
@@ -173,7 +173,7 @@ export function TimeLogs() {
   }
 
   if (loading) {
-    return <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-4 border-moja-blue border-t-transparent rounded-full animate-spin" /></div>;
+    return null;
   }
 
   return (

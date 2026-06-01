@@ -7,7 +7,7 @@ import { Toast } from '../components/Toast';
 
 export function StaffManagement() {
   const [staffList, setStaffList] = useState<Staff[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [editingStaff, setEditingStaff] = useState<Staff | null>(null);
   const [resetPinStaff, setResetPinStaff] = useState<Staff | null>(null);
   const [newPin, setNewPin] = useState('');
@@ -78,7 +78,7 @@ export function StaffManagement() {
   }
 
   if (loading) {
-    return <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-4 border-moja-blue border-t-transparent rounded-full animate-spin" /></div>;
+    return null;
   }
 
   return (

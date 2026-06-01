@@ -1,7 +1,14 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { Settings, Save } from 'lucide-react';
+import { Settings, Save, UserPlus, Trash2, X, Shield } from 'lucide-react';
 import { Toast } from '../components/Toast';
+
+interface AdminUser {
+  id: string;
+  email: string;
+  name: string;
+  created_at: string;
+}
 
 export function AdminSettings() {
   const [settings, setSettings] = useState({
@@ -13,13 +20,109 @@ export function AdminSettings() {
     daily_summary_email: false,
     overtime_warning_threshold: 35,
   });
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
+  // Admin management state
+  const [admins, setAdmins] = useState<AdminUser[]>([]);
+  const [showAddAdmin, setShowAddAdmin] = useState(false);
+  const [addAdminForm, setAddAdminForm] = useState({ name: '', email: '', password: '' });
+  const [addingAdmin, setAddingAdmin] = useState(false);
+  const [removingAdmin, setRemovingAdmin] = useState<string | null>(null);
+
   useEffect(() => {
     loadSettings();
+    loadAdmins();
   }, []);
+
+  async function loadAdmins() {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/clock-operations/admin/list-admins`,
+        {
+          headers: { 'Authorization': `Bearer ${session.access_token}` },
+        }
+      );
+
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success) setAdmins(result.admins);
+      }
+    } catch {
+      // Silent fail — admins list is supplementary
+    }
+  }
+
+  async function handleAddAdmin(e: React.FormEvent) {
+    e.preventDefault();
+    setAddingAdmin(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/clock-operations/admin/create-admin`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify(addAdminForm),
+        }
+      );
+
+      const result = await response.json();
+      if (result.success) {
+        setToast({ message: result.message, type: 'success' });
+        setShowAddAdmin(false);
+        setAddAdminForm({ name: '', email: '', password: '' });
+        loadAdmins();
+      } else {
+        setToast({ message: result.message || 'Failed to create admin', type: 'error' });
+      }
+    } catch {
+      setToast({ message: 'Network error', type: 'error' });
+    } finally {
+      setAddingAdmin(false);
+    }
+  }
+
+  async function handleRemoveAdmin(adminId: string) {
+    setRemovingAdmin(adminId);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/clock-operations/admin/remove-admin`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({ admin_id: adminId }),
+        }
+      );
+
+      const result = await response.json();
+      if (result.success) {
+        setToast({ message: 'Admin removed', type: 'success' });
+        loadAdmins();
+      } else {
+        setToast({ message: result.message || 'Failed to remove admin', type: 'error' });
+      }
+    } catch {
+      setToast({ message: 'Network error', type: 'error' });
+    } finally {
+      setRemovingAdmin(null);
+    }
+  }
 
   async function loadSettings() {
     try {
@@ -105,7 +208,7 @@ export function AdminSettings() {
   }
 
   if (loading) {
-    return <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-4 border-moja-blue border-t-transparent rounded-full animate-spin" /></div>;
+    return null;
   }
 
   return (
@@ -216,6 +319,52 @@ export function AdminSettings() {
         </label>
       </div>
 
+      {/* Admin Accounts */}
+      <div className="bg-white rounded-xl border border-gray-100 p-6 shadow-sm space-y-5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Shield className="w-5 h-5 text-moja-blue" />
+            <h3 className="text-lg font-bold text-moja-blue">Admin Accounts</h3>
+          </div>
+          <button
+            onClick={() => setShowAddAdmin(true)}
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-moja-blue text-white rounded-lg font-bold text-sm hover:bg-moja-blue/90 active:scale-[0.98] transition-all"
+          >
+            <UserPlus className="w-4 h-4" />
+            Add Admin
+          </button>
+        </div>
+
+        <div className="divide-y divide-gray-100">
+          {admins.map(admin => (
+            <div key={admin.id} className="flex items-center justify-between py-3">
+              <div>
+                <p className="font-bold text-moja-blue">{admin.name}</p>
+                <p className="text-sm font-semibold text-moja-blue/50">{admin.email}</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-xs font-semibold text-moja-blue/30">
+                  Added {new Date(admin.created_at).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}
+                </span>
+                {admins.length > 1 && (
+                  <button
+                    onClick={() => handleRemoveAdmin(admin.id)}
+                    disabled={removingAdmin === admin.id}
+                    className="p-2 text-moja-blue/30 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+                    title="Remove admin"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+          {admins.length === 0 && (
+            <p className="py-3 text-sm text-moja-blue/40 font-semibold">Loading admin accounts...</p>
+          )}
+        </div>
+      </div>
+
       {/* Save Button */}
       <div className="flex justify-end">
         <button
@@ -227,6 +376,72 @@ export function AdminSettings() {
           {saving ? 'Saving...' : 'Save Settings'}
         </button>
       </div>
+
+      {/* Add Admin Modal */}
+      {showAddAdmin && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md p-6 space-y-4 animate-fade-in">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xl font-bold text-moja-blue">Add Admin Account</h3>
+              <button onClick={() => setShowAddAdmin(false)} className="p-2 hover:bg-gray-100 rounded-lg">
+                <X className="w-5 h-5 text-moja-blue/40" />
+              </button>
+            </div>
+            <form onSubmit={handleAddAdmin} className="space-y-4">
+              <div>
+                <label className="block text-sm font-bold text-moja-blue mb-1">Name</label>
+                <input
+                  type="text"
+                  value={addAdminForm.name}
+                  onChange={(e) => setAddAdminForm(f => ({ ...f, name: e.target.value }))}
+                  className="w-full h-12 px-4 font-semibold text-moja-blue border-2 border-moja-blue/20 rounded-xl focus:border-moja-orange focus:outline-none"
+                  placeholder="Admin name"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-moja-blue mb-1">Email</label>
+                <input
+                  type="email"
+                  value={addAdminForm.email}
+                  onChange={(e) => setAddAdminForm(f => ({ ...f, email: e.target.value }))}
+                  className="w-full h-12 px-4 font-semibold text-moja-blue border-2 border-moja-blue/20 rounded-xl focus:border-moja-orange focus:outline-none"
+                  placeholder="admin@email.com"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-moja-blue mb-1">Password</label>
+                <input
+                  type="password"
+                  value={addAdminForm.password}
+                  onChange={(e) => setAddAdminForm(f => ({ ...f, password: e.target.value }))}
+                  className="w-full h-12 px-4 font-semibold text-moja-blue border-2 border-moja-blue/20 rounded-xl focus:border-moja-orange focus:outline-none"
+                  placeholder="Minimum 6 characters"
+                  minLength={6}
+                  required
+                />
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAddAdmin(false)}
+                  className="flex-1 h-12 border-2 border-moja-blue/20 rounded-xl font-bold text-moja-blue/60 hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={addingAdmin}
+                  className="flex-1 h-12 bg-moja-orange text-white rounded-xl font-bold hover:bg-moja-orange/90 transition-colors disabled:opacity-50"
+                >
+                  {addingAdmin ? 'Creating...' : 'Create Admin'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

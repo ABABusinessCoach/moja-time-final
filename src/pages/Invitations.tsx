@@ -7,7 +7,7 @@ import { Toast } from '../components/Toast';
 export function Invitations() {
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [email, setEmail] = useState('');
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
@@ -60,10 +60,11 @@ export function Invitations() {
     if (newInv) {
       const appUrl = import.meta.env.VITE_APP_URL || window.location.origin;
       const invitationLink = `${appUrl}#/register/${newInv.token}`;
+      const { data: { session } } = await supabase.auth.getSession();
       const emailResult = await callEdgeFunction('/send-invitation', {
         email,
         invitation_link: invitationLink,
-      });
+      }, session?.access_token);
 
       if (emailResult.success) {
         setToast({ message: `Invitation email sent to ${email}`, type: 'success' });
@@ -96,7 +97,7 @@ export function Invitations() {
   }
 
   if (loading) {
-    return <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-4 border-moja-blue border-t-transparent rounded-full animate-spin" /></div>;
+    return null;
   }
 
   return (
