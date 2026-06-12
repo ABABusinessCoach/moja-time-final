@@ -253,11 +253,11 @@ export function AdminDashboard() {
                   <span className="font-bold text-moja-blue">{log.staff?.name}</span>
                   <span className="text-moja-blue/30 mx-2">-</span>
                   <span className="text-sm font-semibold text-moja-blue/60">
-                    In: {new Date(log.clock_in_time).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                    In: {new Date(log.clock_in_time).toLocaleString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                   </span>
                   {log.clock_out_time && (
                     <span className="text-sm font-semibold text-moja-blue/60">
-                      {' | Out: '}{new Date(log.clock_out_time).toLocaleString([], { hour: '2-digit', minute: '2-digit' })}
+                      {' | Out: '}{new Date(log.clock_out_time).toLocaleString('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit' })}
                     </span>
                   )}
                   {log.notes && (

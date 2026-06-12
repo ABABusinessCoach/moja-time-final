@@ -59,11 +59,11 @@ export function MyHoursPage() {
   }, [pin]);
 
   function getDayName(dateStr: string): string {
-    return new Date(dateStr).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+    return new Date(dateStr).toLocaleDateString('en-US', { timeZone: 'America/New_York', weekday: 'short', month: 'short', day: 'numeric' });
   }
 
   function formatTime(dateStr: string): string {
-    return new Date(dateStr).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return new Date(dateStr).toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit' });
   }
 
   function formatDuration(mins: number): string {
@@ -99,7 +99,7 @@ export function MyHoursPage() {
             <div>
               <h1 className="text-xl font-bold text-moja-blue">{data.staff_name}</h1>
               <p className="text-xs font-semibold text-moja-blue/50">
-                Week of {new Date(data.week_start).toLocaleDateString([], { month: 'long', day: 'numeric' })}
+                Week of {new Date(data.week_start).toLocaleDateString('en-US', { timeZone: 'America/New_York', month: 'long', day: 'numeric' })}
               </p>
             </div>
             {data.is_clocked_in && (

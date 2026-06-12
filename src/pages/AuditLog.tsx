@@ -83,20 +83,20 @@ export function AuditLog() {
                         {log.old_values && log.action === 'manual_edit' && (
                           <div className="mt-2 text-xs font-mono text-moja-blue/40 bg-gray-50 rounded-lg p-2 max-w-md">
                             <span className="text-red-500">- </span>
-                            In: {log.old_values.clock_in_time ? new Date(log.old_values.clock_in_time as string).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '?'}
+                            In: {log.old_values.clock_in_time ? new Date(log.old_values.clock_in_time as string).toLocaleString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '?'}
                             {log.old_values.clock_out_time && (
-                              <> | Out: {new Date(log.old_values.clock_out_time as string).toLocaleString([], { hour: '2-digit', minute: '2-digit' })}</>
+                              <> | Out: {new Date(log.old_values.clock_out_time as string).toLocaleString('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit' })}</>
                             )}
                             <br />
                             <span className="text-green-500">+ </span>
-                            {log.new_values?.clock_in_time && <>In: {new Date(log.new_values.clock_in_time as string).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</>}
-                            {log.new_values?.clock_out_time && <> | Out: {new Date(log.new_values.clock_out_time as string).toLocaleString([], { hour: '2-digit', minute: '2-digit' })}</>}
+                            {log.new_values?.clock_in_time && <>In: {new Date(log.new_values.clock_in_time as string).toLocaleString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</>}
+                            {log.new_values?.clock_out_time && <> | Out: {new Date(log.new_values.clock_out_time as string).toLocaleString('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit' })}</>}
                           </div>
                         )}
                       </div>
                     </div>
                     <span className="text-xs font-semibold text-moja-blue/30 whitespace-nowrap">
-                      {new Date(log.created_at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                      {new Date(log.created_at).toLocaleString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                     </span>
                   </div>
                 </div>

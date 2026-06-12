@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import type { Staff, ClockLog } from '../lib/types';
+import type { Staff, ClockLog, BreakLog } from '../lib/types';
 import { Download, Calendar, ArrowUpDown, BarChart3, CalendarRange, X, Loader2 } from 'lucide-react';
 
 function getWeekDates(date: Date): { start: Date; end: Date } {
@@ -64,6 +64,7 @@ export function WeeklyReports() {
   });
   const [staffList, setStaffList] = useState<Staff[]>([]);
   const [logs, setLogs] = useState<ClockLog[]>([]);
+  const [breakLogs, setBreakLogs] = useState<BreakLog[]>([]);
   const [filterStaff, setFilterStaff] = useState('');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [loading, setLoading] = useState(false);
@@ -104,7 +105,7 @@ export function WeeklyReports() {
     const weekStart = new Date(weekOf);
     const { end } = getWeekDates(weekStart);
 
-    const [staffRes, logsRes] = await Promise.all([
+    const [staffRes, logsRes, breaksRes] = await Promise.all([
       supabase.from('staff').select('*').order('name'),
       supabase
         .from('clock_logs')
@@ -112,10 +113,16 @@ export function WeeklyReports() {
         .gte('clock_in_time', weekStart.toISOString())
         .lte('clock_in_time', end.toISOString())
         .order('clock_in_time'),
+      supabase
+        .from('break_logs')
+        .select('*')
+        .gte('break_start', weekStart.toISOString())
+        .lte('break_start', end.toISOString()),
     ]);
 
     if (staffRes.data) setStaffList(staffRes.data);
     if (logsRes.data) setLogs(logsRes.data);
+    if (breaksRes.data) setBreakLogs(breaksRes.data);
     setLoading(false);
   }
 
@@ -155,53 +162,98 @@ export function WeeklyReports() {
     const { end } = getWeekDates(weekStart);
     const weekEndingStr = formatDate(end);
 
-    const rows: string[][] = [
-      ['Employee Name', 'Date', 'Clock In', 'Clock Out', 'Regular Hours', 'Overtime Hours', 'Break Time (min)', 'Net Hours', 'Week Ending'],
-    ];
-
     let filteredLogs = logs;
     if (filterStaff) filteredLogs = logs.filter(l => l.staff_id === filterStaff);
 
-    const staffTotals = new Map<string, number>();
-
+    // Group logs by staff
+    const staffMap = new Map<string, { staff: Staff; logs: ClockLog[] }>();
     filteredLogs.forEach(log => {
       const staff = staffList.find(s => s.id === log.staff_id);
       if (!staff) return;
+      if (!staffMap.has(staff.id)) {
+        staffMap.set(staff.id, { staff, logs: [] });
+      }
+      staffMap.get(staff.id)!.logs.push(log);
+    });
 
-      const currentTotal = staffTotals.get(staff.id) || 0;
-      const hoursWorked = log.duration_minutes ? log.duration_minutes / 60 : 0;
-      const newTotal = currentTotal + hoursWorked;
-      staffTotals.set(staff.id, newTotal);
+    const rows: string[][] = [
+      ['Employee Name', 'Date', 'Clock In', 'Clock Out', 'Hours Worked', 'Overtime', 'Break (min)', 'Lunch (min)', 'Week Ending', 'Notes'],
+    ];
 
-      const clockIn = new Date(log.clock_in_time);
-      const clockOut = log.clock_out_time ? new Date(log.clock_out_time) : null;
+    let grandTotalHours = 0;
+    let grandTotalOvertime = 0;
 
-      let regularHrs = hoursWorked;
-      let overtimeHrs = 0;
+    const sortedStaff = Array.from(staffMap.values()).sort((a, b) =>
+      a.staff.name.localeCompare(b.staff.name)
+    );
 
-      if (newTotal > 40) {
-        const overAmount = newTotal - 40;
-        if (overAmount >= hoursWorked) {
-          overtimeHrs = hoursWorked;
-          regularHrs = 0;
-        } else {
-          overtimeHrs = overAmount;
-          regularHrs = hoursWorked - overAmount;
-        }
+    sortedStaff.forEach(({ staff, logs: staffLogs }) => {
+      let weekTotal = 0;
+
+      staffLogs.forEach(log => {
+        const hoursWorked = log.duration_minutes ? log.duration_minutes / 60 : 0;
+        weekTotal += hoursWorked;
+        const clockIn = new Date(log.clock_in_time);
+        const clockOut = log.clock_out_time ? new Date(log.clock_out_time) : null;
+
+        const logBreaks = breakLogs.filter(b => b.clock_log_id === log.id);
+        const breakMins = logBreaks
+          .filter(b => b.break_type === 'break')
+          .reduce((sum, b) => sum + (b.duration_minutes || 0), 0);
+        const lunchMins = logBreaks
+          .filter(b => b.break_type === 'lunch')
+          .reduce((sum, b) => sum + (b.duration_minutes || 0), 0);
+
+        rows.push([
+          staff.name,
+          formatDate(clockIn),
+          clockIn.toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: true }),
+          clockOut ? clockOut.toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: true }) : 'In Progress',
+          hoursWorked.toFixed(2),
+          '',
+          String(breakMins),
+          String(lunchMins),
+          weekEndingStr,
+          log.notes || '',
+        ]);
+      });
+
+      const weekOvertime = Math.max(0, weekTotal - 40);
+
+      if (weekOvertime > 0 && staffLogs.length > 0) {
+        rows[rows.length - 1][5] = weekOvertime.toFixed(2);
       }
 
       rows.push([
-        staff.name,
-        formatDate(clockIn),
-        clockIn.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }),
-        clockOut ? clockOut.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }) : '',
-        regularHrs.toFixed(2),
-        overtimeHrs.toFixed(2),
-        '0',
-        hoursWorked.toFixed(2),
-        weekEndingStr,
+        `--- ${staff.name} TOTAL ---`,
+        '',
+        '',
+        '',
+        weekTotal.toFixed(2),
+        weekOvertime.toFixed(2),
+        '',
+        '',
+        '',
+        '',
       ]);
+      rows.push(['', '', '', '', '', '', '', '', '', '']);
+
+      grandTotalHours += weekTotal;
+      grandTotalOvertime += weekOvertime;
     });
+
+    rows.push([
+      '=== GRAND TOTAL ===',
+      `Week of ${weekOf}`,
+      '',
+      '',
+      grandTotalHours.toFixed(2),
+      grandTotalOvertime.toFixed(2),
+      '',
+      '',
+      '',
+      '',
+    ]);
 
     const csv = rows.map(r => r.map(c => `"${c}"`).join(',')).join('\n');
     downloadBlob(csv, `moja_timesheet_week_${weekOf.replace(/-/g, '')}.csv`);
@@ -217,7 +269,7 @@ export function WeeklyReports() {
       const endDate = new Date(rangeEnd);
       endDate.setHours(23, 59, 59, 999);
 
-      const [staffRes, logsRes] = await Promise.all([
+      const [staffRes, logsRes, breaksRes] = await Promise.all([
         supabase.from('staff').select('*').order('name'),
         supabase
           .from('clock_logs')
@@ -225,10 +277,16 @@ export function WeeklyReports() {
           .gte('clock_in_time', startDate.toISOString())
           .lte('clock_in_time', endDate.toISOString())
           .order('clock_in_time'),
+        supabase
+          .from('break_logs')
+          .select('*')
+          .gte('break_start', startDate.toISOString())
+          .lte('break_start', endDate.toISOString()),
       ]);
 
       const allStaff: Staff[] = staffRes.data || [];
       let rangeLogs: ClockLog[] = logsRes.data || [];
+      const rangeBreaks: BreakLog[] = breaksRes.data || [];
 
       if (rangeStaff) {
         rangeLogs = rangeLogs.filter(l => l.staff_id === rangeStaff);
@@ -246,7 +304,7 @@ export function WeeklyReports() {
       });
 
       const rows: string[][] = [
-        ['Employee Name', 'Date', 'Clock In', 'Clock Out', 'Hours Worked', 'Overtime', 'Week Ending', 'Notes'],
+        ['Employee Name', 'Date', 'Clock In', 'Clock Out', 'Hours Worked', 'Overtime', 'Break (min)', 'Lunch (min)', 'Week Ending', 'Notes'],
       ];
 
       let grandTotalHours = 0;
@@ -282,13 +340,23 @@ export function WeeklyReports() {
             const clockOut = log.clock_out_time ? new Date(log.clock_out_time) : null;
             const { end: weekEnd } = getWeekDates(clockIn);
 
+            const logBreaks = rangeBreaks.filter(b => b.clock_log_id === log.id);
+            const breakMins = logBreaks
+              .filter(b => b.break_type === 'break')
+              .reduce((sum, b) => sum + (b.duration_minutes || 0), 0);
+            const lunchMins = logBreaks
+              .filter(b => b.break_type === 'lunch')
+              .reduce((sum, b) => sum + (b.duration_minutes || 0), 0);
+
             rows.push([
               staff.name,
               formatDate(clockIn),
-              clockIn.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }),
-              clockOut ? clockOut.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }) : 'In Progress',
+              clockIn.toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: true }),
+              clockOut ? clockOut.toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: true }) : 'In Progress',
               hoursWorked.toFixed(2),
               '',
+              String(breakMins),
+              String(lunchMins),
               formatDate(weekEnd),
               log.notes || '',
             ]);
@@ -314,8 +382,10 @@ export function WeeklyReports() {
           staffTotalOvertime.toFixed(2),
           '',
           '',
+          '',
+          '',
         ]);
-        rows.push(['', '', '', '', '', '', '', '']);
+        rows.push(['', '', '', '', '', '', '', '', '', '']);
 
         grandTotalHours += staffTotalHours;
         grandTotalOvertime += staffTotalOvertime;
@@ -329,6 +399,8 @@ export function WeeklyReports() {
         '',
         grandTotalHours.toFixed(2),
         grandTotalOvertime.toFixed(2),
+        '',
+        '',
         '',
         '',
       ]);
@@ -356,7 +428,7 @@ export function WeeklyReports() {
       <div>
         <h2 className="text-2xl font-bold text-moja-blue">Weekly Time Report</h2>
         <p className="text-sm font-semibold text-moja-blue/50 mt-1">
-          Week of {weekStart.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })} - {weekEnd.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })}
+          Week of {weekStart.toLocaleDateString('en-US', { timeZone: 'America/New_York', weekday: 'long', month: 'long', day: 'numeric' })} - {weekEnd.toLocaleDateString('en-US', { timeZone: 'America/New_York', weekday: 'long', month: 'long', day: 'numeric' })}
         </p>
       </div>
 

@@ -344,7 +344,7 @@ export function AdminSettings() {
               </div>
               <div className="flex items-center gap-3">
                 <span className="text-xs font-semibold text-moja-blue/30">
-                  Added {new Date(admin.created_at).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}
+                  Added {new Date(admin.created_at).toLocaleDateString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', year: 'numeric' })}
                 </span>
                 {admins.length > 1 && (
                   <button

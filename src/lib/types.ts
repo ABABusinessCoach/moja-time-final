@@ -28,6 +28,7 @@ export interface BreakLog {
   staff_id: string;
   break_start: string;
   break_end: string | null;
+  break_type: 'break' | 'lunch';
   duration_minutes: number | null;
   created_at: string;
 }

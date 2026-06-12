@@ -211,14 +211,14 @@ export function TimeLogs() {
                 <tr key={log.id} className={`${idx % 2 === 1 ? 'bg-gray-50/50' : ''} ${log.flagged ? 'bg-red-50/30' : ''}`}>
                   <td className="px-4 py-3 font-bold text-moja-blue text-sm">{log.staff?.name}</td>
                   <td className="px-4 py-3 text-sm font-semibold text-moja-blue/70">
-                    {new Date(log.clock_in_time).toLocaleDateString([], { month: 'short', day: 'numeric' })}
+                    {new Date(log.clock_in_time).toLocaleDateString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric' })}
                   </td>
                   <td className="px-4 py-3 text-sm font-semibold text-moja-blue/70 font-mono">
-                    {new Date(log.clock_in_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    {new Date(log.clock_in_time).toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit' })}
                   </td>
                   <td className="px-4 py-3 text-sm font-semibold text-moja-blue/70 font-mono">
                     {log.clock_out_time
-                      ? new Date(log.clock_out_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                      ? new Date(log.clock_out_time).toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit' })
                       : <span className="text-moja-aqua font-bold">Active</span>
                     }
                   </td>
@@ -228,8 +228,8 @@ export function TimeLogs() {
                       : '-'
                     }
                   </td>
-                  <td className="px-4 py-3 text-xs text-moja-blue/40 max-w-[150px] truncate">
-                    {log.notes || '-'}
+                  <td className="px-4 py-3 text-xs text-moja-blue/40 max-w-[200px]" title={log.notes || ''}>
+                    {log.notes ? <span className="whitespace-pre-line line-clamp-2">{log.notes}</span> : '-'}
                   </td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-1">
@@ -389,7 +389,7 @@ export function TimeLogs() {
               </button>
             </div>
             <p className="text-sm text-moja-blue/70 font-semibold">
-              Are you sure you want to delete this entry for <span className="font-bold">{deleteLog.staff?.name}</span> on {new Date(deleteLog.clock_in_time).toLocaleDateString()}?
+              Are you sure you want to delete this entry for <span className="font-bold">{deleteLog.staff?.name}</span> on {new Date(deleteLog.clock_in_time).toLocaleDateString('en-US', { timeZone: 'America/New_York' })}?
             </p>
             <div>
               <label className="block text-sm font-bold text-moja-blue mb-1">Reason for Deletion *</label>

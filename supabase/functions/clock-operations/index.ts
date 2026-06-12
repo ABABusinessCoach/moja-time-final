@@ -20,21 +20,49 @@ function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
+function toEST(date: Date): Date {
+  const estStr = date.toLocaleString("en-US", { timeZone: "America/New_York" });
+  return new Date(estStr);
+}
+
+function toESTISO(date: Date): string {
+  const est = toEST(date);
+  const offset = date.getTime() - est.getTime();
+  const offsetHours = Math.round(offset / 3600000);
+  const sign = offsetHours <= 0 ? "+" : "-";
+  const absOffset = Math.abs(offsetHours);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const y = est.getFullYear();
+  const m = pad(est.getMonth() + 1);
+  const d = pad(est.getDate());
+  const h = pad(est.getHours());
+  const min = pad(est.getMinutes());
+  const s = pad(est.getSeconds());
+  return `${y}-${m}-${d}T${h}:${min}:${s}${sign}${pad(absOffset)}:00`;
+}
+
+function nowEST(): string {
+  return toESTISO(new Date());
+}
+
 function getWeekEnding(date: Date): string {
-  const d = new Date(date);
-  const day = d.getDay();
+  const est = toEST(date);
+  const day = est.getDay();
   const diff = day === 0 ? 0 : 7 - day;
-  d.setDate(d.getDate() + diff);
-  return d.toISOString().split("T")[0];
+  est.setDate(est.getDate() + diff);
+  const y = est.getFullYear();
+  const m = String(est.getMonth() + 1).padStart(2, "0");
+  const dd = String(est.getDate()).padStart(2, "0");
+  return `${y}-${m}-${dd}`;
 }
 
 function getWeekStart(date: Date): Date {
-  const d = new Date(date);
-  const day = d.getDay();
+  const est = toEST(date);
+  const day = est.getDay();
   const diff = day === 0 ? -6 : 1 - day;
-  d.setDate(d.getDate() + diff);
-  d.setHours(0, 0, 0, 0);
-  return d;
+  est.setDate(est.getDate() + diff);
+  est.setHours(0, 0, 0, 0);
+  return est;
 }
 
 async function checkRateLimit(
@@ -60,7 +88,7 @@ async function recordAttempt(
   await supabase.from("pin_attempts").insert({
     ip_address: ipAddress,
     success,
-    attempted_at: new Date().toISOString(),
+    attempted_at: nowEST(),
   });
 }
 
@@ -411,7 +439,7 @@ Deno.serve(async (req: Request) => {
 
       const { error: logError } = await supabase.from("clock_logs").insert({
         staff_id: matchedStaff.id,
-        clock_in_time: now.toISOString(),
+        clock_in_time: toESTISO(now),
         week_ending: weekEnding,
       });
 
@@ -428,7 +456,7 @@ Deno.serve(async (req: Request) => {
 
       return json({
         success: true,
-        timestamp: now.toISOString(),
+        timestamp: toESTISO(now),
         action: "clock_in",
         staff_name: matchedStaff.name,
         weekly_total_hours: Math.round((weeklyTotalMinutes / 60) * 10) / 10,
@@ -503,7 +531,7 @@ Deno.serve(async (req: Request) => {
           );
           await supabase
             .from("break_logs")
-            .update({ break_end: now.toISOString(), duration_minutes: breakDuration })
+            .update({ break_end: toESTISO(now), duration_minutes: breakDuration })
             .eq("id", openBreak.id);
         }
 
@@ -536,7 +564,7 @@ Deno.serve(async (req: Request) => {
       await supabase
         .from("clock_logs")
         .update({
-          clock_out_time: now.toISOString(),
+          clock_out_time: toESTISO(now),
           duration_minutes: durationMinutes,
         })
         .eq("id", openLog.id);
@@ -550,7 +578,7 @@ Deno.serve(async (req: Request) => {
 
       return json({
         success: true,
-        timestamp: now.toISOString(),
+        timestamp: toESTISO(now),
         action: "clock_out",
         staff_name: matchedStaff.name,
         duration_minutes: durationMinutes,
@@ -623,7 +651,7 @@ Deno.serve(async (req: Request) => {
       await supabase.from("break_logs").insert({
         clock_log_id: openLog.id,
         staff_id: matchedStaff.id,
-        break_start: now.toISOString(),
+        break_start: toESTISO(now),
         break_type: type,
       });
 
@@ -634,7 +662,7 @@ Deno.serve(async (req: Request) => {
 
       return json({
         success: true,
-        timestamp: now.toISOString(),
+        timestamp: toESTISO(now),
         action: "start_break",
         break_type: type,
         staff_name: matchedStaff.name,
@@ -702,7 +730,7 @@ Deno.serve(async (req: Request) => {
 
       await supabase
         .from("break_logs")
-        .update({ break_end: now.toISOString(), duration_minutes: breakDuration })
+        .update({ break_end: toESTISO(now), duration_minutes: breakDuration })
         .eq("id", openBreak.id);
 
       await supabase
@@ -712,7 +740,7 @@ Deno.serve(async (req: Request) => {
 
       return json({
         success: true,
-        timestamp: now.toISOString(),
+        timestamp: toESTISO(now),
         action: "end_break",
         staff_name: matchedStaff.name,
         break_duration_minutes: breakDuration,
@@ -794,8 +822,8 @@ Deno.serve(async (req: Request) => {
         staff_name: matchedStaff.name,
         is_clocked_in: matchedStaff.is_clocked_in,
         is_on_break: matchedStaff.is_on_break || false,
-        week_start: weekStart.toISOString(),
-        week_end: weekEnd.toISOString(),
+        week_start: toESTISO(weekStart),
+        week_end: toESTISO(weekEnd),
         logs: logs || [],
         breaks: breaks || [],
         total_hours: Math.round((totalMinutes / 60) * 10) / 10,
@@ -861,7 +889,7 @@ Deno.serve(async (req: Request) => {
 
       const { error: logError } = await supabase.from("clock_logs").insert({
         staff_id,
-        clock_in_time: now.toISOString(),
+        clock_in_time: toESTISO(now),
         week_ending: weekEnding,
       });
 
@@ -876,7 +904,7 @@ Deno.serve(async (req: Request) => {
 
       return json({
         success: true,
-        timestamp: now.toISOString(),
+        timestamp: toESTISO(now),
         action: "clock_in",
       });
     }
@@ -927,7 +955,7 @@ Deno.serve(async (req: Request) => {
       await supabase
         .from("clock_logs")
         .update({
-          clock_out_time: now.toISOString(),
+          clock_out_time: toESTISO(now),
           duration_minutes: durationMinutes,
         })
         .eq("id", openLog.id);
@@ -939,7 +967,7 @@ Deno.serve(async (req: Request) => {
 
       return json({
         success: true,
-        timestamp: now.toISOString(),
+        timestamp: toESTISO(now),
         action: "clock_out",
         duration_minutes: durationMinutes,
       });
@@ -1168,7 +1196,11 @@ Deno.serve(async (req: Request) => {
         }
       }
 
-      if (reason) updates.notes = reason;
+      if (reason) {
+        const noteTimestamp = nowEST().replace("T", " ").slice(0, 16);
+        const newNote = `[${noteTimestamp}] ${reason}`;
+        updates.notes = existing.notes ? `${existing.notes}\n${newNote}` : newNote;
+      }
 
       await supabase.from("clock_logs").update(updates).eq("id", log_id);
 
@@ -1215,11 +1247,11 @@ Deno.serve(async (req: Request) => {
         .from("clock_logs")
         .insert({
           staff_id,
-          clock_in_time: inTime.toISOString(),
-          clock_out_time: outTime?.toISOString() || null,
+          clock_in_time: toESTISO(inTime),
+          clock_out_time: outTime ? toESTISO(outTime) : null,
           duration_minutes: durationMinutes,
           week_ending: weekEnding,
-          notes: reason,
+          notes: `[${nowEST().replace("T", " ").slice(0, 16)}] ${reason}`,
         })
         .select()
         .maybeSingle();
@@ -1305,7 +1337,7 @@ Deno.serve(async (req: Request) => {
       for (const staff of clockedInStaff) {
         const { data: openLog } = await supabase
           .from("clock_logs")
-          .select("id, clock_in_time")
+          .select("id, clock_in_time, notes")
           .eq("staff_id", staff.id)
           .is("clock_out_time", null)
           .order("clock_in_time", { ascending: false })
@@ -1328,7 +1360,7 @@ Deno.serve(async (req: Request) => {
             await supabase
               .from("break_logs")
               .update({
-                break_end: now.toISOString(),
+                break_end: toESTISO(now),
                 duration_minutes: breakDuration,
               })
               .eq("id", openBreak.id);
@@ -1342,9 +1374,12 @@ Deno.serve(async (req: Request) => {
           await supabase
             .from("clock_logs")
             .update({
-              clock_out_time: now.toISOString(),
+              clock_out_time: toESTISO(now),
               duration_minutes: durationMinutes,
-              notes: reason || "Force clock out by admin",
+              notes: (() => {
+                const newNote = `[${toESTISO(now).replace("T", " ").slice(0, 16)}] ${reason || "Force clock out by admin"}`;
+                return openLog.notes ? `${openLog.notes}\n${newNote}` : newNote;
+              })(),
             })
             .eq("id", openLog.id);
 
@@ -1353,7 +1388,7 @@ Deno.serve(async (req: Request) => {
             action: "force_clock_out",
             target_staff_id: staff.id,
             clock_log_id: openLog.id,
-            new_values: { clock_out_time: now.toISOString(), duration_minutes: durationMinutes },
+            new_values: { clock_out_time: toESTISO(now), duration_minutes: durationMinutes },
             reason: reason || "Force clock out all",
           });
 
@@ -1409,7 +1444,7 @@ Deno.serve(async (req: Request) => {
         await supabase
           .from("app_settings")
           .upsert(
-            { key, value: JSON.parse(JSON.stringify(value)), updated_at: new Date().toISOString() },
+            { key, value: JSON.parse(JSON.stringify(value)), updated_at: nowEST() },
             { onConflict: "key" }
           );
       }
@@ -1458,7 +1493,7 @@ Deno.serve(async (req: Request) => {
       }
 
       const token = crypto.randomUUID();
-      const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+      const expiresAt = toESTISO(new Date(Date.now() + 60 * 60 * 1000));
 
       const { error: tokenError } = await supabase
         .from("password_reset_tokens")

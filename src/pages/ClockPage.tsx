@@ -200,21 +200,24 @@ export function ClockPage() {
     }
   }
 
-  const hours = currentTime.getHours();
-  const minutes = currentTime.getMinutes();
-  const seconds = currentTime.getSeconds();
+  const estOptions = { timeZone: 'America/New_York' } as const;
+  const hours = parseInt(currentTime.toLocaleString('en-US', { ...estOptions, hour: 'numeric', hour12: false }));
+  const minutes = parseInt(currentTime.toLocaleString('en-US', { ...estOptions, minute: 'numeric' }));
+  const seconds = parseInt(currentTime.toLocaleString('en-US', { ...estOptions, second: 'numeric' }));
 
   const hourDeg = (hours % 12) * 30 + minutes * 0.5;
   const minuteDeg = minutes * 6;
   const secondDeg = seconds * 6;
 
-  const timeString = currentTime.toLocaleTimeString([], {
+  const timeString = currentTime.toLocaleTimeString('en-US', {
+    ...estOptions,
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
   });
 
-  const dateString = currentTime.toLocaleDateString([], {
+  const dateString = currentTime.toLocaleDateString('en-US', {
+    ...estOptions,
     weekday: 'long',
     month: 'long',
     day: 'numeric',
@@ -225,8 +228,8 @@ export function ClockPage() {
   if (shiftSummary) {
     const firstName = shiftSummary.staff_name.split(' ')[0];
     const ts = new Date(shiftSummary.timestamp);
-    const timeDisplay = ts.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-    const dateDisplay = ts.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' });
+    const timeDisplay = ts.toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit' });
+    const dateDisplay = ts.toLocaleDateString('en-US', { timeZone: 'America/New_York', weekday: 'short', day: 'numeric', month: 'short' });
 
     const configs = {
       clock_in: {
@@ -345,6 +348,7 @@ export function ClockPage() {
               >
                 {c.button}
               </button>
+
             </div>
           </div>
         </div>

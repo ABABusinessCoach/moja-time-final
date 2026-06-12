@@ -146,7 +146,7 @@ export function Invitations() {
                   <div>
                     <div className="font-bold text-moja-blue">{inv.email}</div>
                     <div className="text-sm font-semibold text-moja-blue/40">
-                      Created {new Date(inv.created_at).toLocaleDateString()} | Expires {new Date(inv.expires_at).toLocaleDateString()}
+                      Created {new Date(inv.created_at).toLocaleDateString('en-US', { timeZone: 'America/New_York' })} | Expires {new Date(inv.expires_at).toLocaleDateString('en-US', { timeZone: 'America/New_York' })}
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
