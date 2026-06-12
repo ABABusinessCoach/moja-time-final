@@ -157,108 +157,6 @@ export function WeeklyReports() {
     return data;
   }
 
-  function exportCSV() {
-    const weekStart = new Date(weekOf);
-    const { end } = getWeekDates(weekStart);
-    const weekEndingStr = formatDate(end);
-
-    let filteredLogs = logs;
-    if (filterStaff) filteredLogs = logs.filter(l => l.staff_id === filterStaff);
-
-    // Group logs by staff
-    const staffMap = new Map<string, { staff: Staff; logs: ClockLog[] }>();
-    filteredLogs.forEach(log => {
-      const staff = staffList.find(s => s.id === log.staff_id);
-      if (!staff) return;
-      if (!staffMap.has(staff.id)) {
-        staffMap.set(staff.id, { staff, logs: [] });
-      }
-      staffMap.get(staff.id)!.logs.push(log);
-    });
-
-    const rows: string[][] = [
-      ['Employee Name', 'Date', 'Clock In', 'Clock Out', 'Hours Worked', 'Overtime', 'Break (min)', 'Lunch (min)', 'Week Ending', 'Notes'],
-    ];
-
-    let grandTotalHours = 0;
-    let grandTotalOvertime = 0;
-
-    const sortedStaff = Array.from(staffMap.values()).sort((a, b) =>
-      a.staff.name.localeCompare(b.staff.name)
-    );
-
-    sortedStaff.forEach(({ staff, logs: staffLogs }) => {
-      let weekTotal = 0;
-
-      staffLogs.forEach(log => {
-        const hoursWorked = log.duration_minutes ? log.duration_minutes / 60 : 0;
-        weekTotal += hoursWorked;
-        const clockIn = new Date(log.clock_in_time);
-        const clockOut = log.clock_out_time ? new Date(log.clock_out_time) : null;
-
-        const logBreaks = breakLogs.filter(b => b.clock_log_id === log.id);
-        const breakMins = logBreaks
-          .filter(b => b.break_type === 'break')
-          .reduce((sum, b) => sum + (b.duration_minutes || 0), 0);
-        const lunchMins = logBreaks
-          .filter(b => b.break_type === 'lunch')
-          .reduce((sum, b) => sum + (b.duration_minutes || 0), 0);
-
-        rows.push([
-          staff.name,
-          formatDate(clockIn),
-          clockIn.toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: true }),
-          clockOut ? clockOut.toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: true }) : 'In Progress',
-          hoursWorked.toFixed(2),
-          '',
-          String(breakMins),
-          String(lunchMins),
-          weekEndingStr,
-          log.notes || '',
-        ]);
-      });
-
-      const weekOvertime = Math.max(0, weekTotal - 40);
-
-      if (weekOvertime > 0 && staffLogs.length > 0) {
-        rows[rows.length - 1][5] = weekOvertime.toFixed(2);
-      }
-
-      rows.push([
-        `--- ${staff.name} TOTAL ---`,
-        '',
-        '',
-        '',
-        weekTotal.toFixed(2),
-        weekOvertime.toFixed(2),
-        '',
-        '',
-        '',
-        '',
-      ]);
-      rows.push(['', '', '', '', '', '', '', '', '', '']);
-
-      grandTotalHours += weekTotal;
-      grandTotalOvertime += weekOvertime;
-    });
-
-    rows.push([
-      '=== GRAND TOTAL ===',
-      `Week of ${weekOf}`,
-      '',
-      '',
-      grandTotalHours.toFixed(2),
-      grandTotalOvertime.toFixed(2),
-      '',
-      '',
-      '',
-      '',
-    ]);
-
-    const csv = rows.map(r => r.map(c => `"${c}"`).join(',')).join('\n');
-    downloadBlob(csv, `moja_timesheet_week_${weekOf.replace(/-/g, '')}.csv`);
-  }
-
   async function exportDateRangeCSV() {
     if (!rangeStart || !rangeEnd) return;
     setRangeExporting(true);
@@ -470,14 +368,7 @@ export function WeeklyReports() {
             }`}
           >
             <CalendarRange className="w-5 h-5" />
-            Date Range
-          </button>
-          <button
-            onClick={exportCSV}
-            className="inline-flex items-center gap-2 px-6 h-12 bg-moja-orange text-white rounded-xl font-bold hover:bg-moja-orange/90 active:scale-[0.98] transition-all touch-manipulation"
-          >
-            <Download className="w-5 h-5" />
-            Export Week
+            Download Report
           </button>
         </div>
       </div>

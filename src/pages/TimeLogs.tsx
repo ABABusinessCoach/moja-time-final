@@ -218,7 +218,16 @@ export function TimeLogs() {
                   </td>
                   <td className="px-4 py-3 text-sm font-semibold text-moja-blue/70 font-mono">
                     {log.clock_out_time
-                      ? new Date(log.clock_out_time).toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit' })
+                      ? (() => {
+                          const inDate = new Date(log.clock_in_time).toLocaleDateString('en-US', { timeZone: 'America/New_York' });
+                          const outDate = new Date(log.clock_out_time).toLocaleDateString('en-US', { timeZone: 'America/New_York' });
+                          const outTime = new Date(log.clock_out_time).toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit' });
+                          if (inDate !== outDate) {
+                            const outShort = new Date(log.clock_out_time).toLocaleDateString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric' });
+                            return <span>{outShort} {outTime}</span>;
+                          }
+                          return outTime;
+                        })()
                       : <span className="text-moja-aqua font-bold">Active</span>
                     }
                   </td>

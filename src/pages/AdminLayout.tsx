@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { LayoutDashboard, Users, Calendar, Send, LogOut, Clock, FileText, History, Settings } from 'lucide-react';
+import { LayoutDashboard, Users, Calendar, Send, LogOut, Clock, FileText, History, Settings, Bug } from 'lucide-react';
 import { AdminDashboard } from './AdminDashboard';
 import { StaffManagement } from './StaffManagement';
 import { WeeklyReports } from './WeeklyReports';
@@ -7,6 +7,7 @@ import { Invitations } from './Invitations';
 import { TimeLogs } from './TimeLogs';
 import { AuditLog } from './AuditLog';
 import { AdminSettings } from './AdminSettings';
+import { BugReports } from './BugReports';
 import { BrandDots } from '../components/BrandAccents';
 
 interface AdminLayoutProps {
@@ -21,6 +22,7 @@ const TABS = [
   { id: 'reports', label: 'Reports', icon: Calendar },
   { id: 'invitations', label: 'Invitations', icon: Send },
   { id: 'audit', label: 'Audit Log', icon: History },
+  { id: 'bugs', label: 'Bugs', icon: Bug },
   { id: 'settings', label: 'Settings', icon: Settings },
 ];
 
@@ -90,6 +92,7 @@ export function AdminLayout({ onSignOut, initialTab = 'dashboard' }: AdminLayout
         {activeTab === 'reports' && <WeeklyReports />}
         {activeTab === 'invitations' && <Invitations />}
         {activeTab === 'audit' && <AuditLog />}
+        {activeTab === 'bugs' && <BugReports />}
         {activeTab === 'settings' && <AdminSettings />}
       </main>
     </div>

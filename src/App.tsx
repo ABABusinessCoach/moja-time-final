@@ -9,6 +9,7 @@ import { RegisterPage } from './pages/RegisterPage';
 import { ResetPassword } from './pages/ResetPassword';
 import { MyHoursPage } from './pages/MyHoursPage';
 import { InstallPrompt } from './components/InstallPrompt';
+import { BugReportButton } from './components/BugReportButton';
 
 function getRoute(): { page: string; params: Record<string, string> } {
   const hash = window.location.hash.slice(1) || '/';
@@ -49,37 +50,46 @@ export default function App() {
     return () => window.removeEventListener('hashchange', onHashChange);
   }, []);
 
-  if (loading) {
-    return <div className="min-h-screen bg-moja-bg" />;
-  }
-
-  if (route.page === 'register') {
-    return <RegisterPage token={route.params.token} />;
-  }
-
-  if (route.page === 'my-hours') {
-    return <MyHoursPage />;
-  }
-
-  if (route.page === 'reset-password') {
-    return <ResetPassword />;
-  }
-
-  if (route.page === 'setup') {
-    return <AdminSetup onComplete={() => { window.location.hash = '#/admin'; window.location.reload(); }} />;
-  }
-
-  if (route.page === 'admin') {
-    if (!session || !isAdmin) {
-      return <AdminLogin onLogin={signIn} />;
+  function renderPage() {
+    if (loading) {
+      return <div className="min-h-screen bg-moja-bg" />;
     }
-    return <AdminLayout onSignOut={signOut} initialTab={route.params.tab || 'dashboard'} />;
+
+    if (route.page === 'register') {
+      return <RegisterPage token={route.params.token} />;
+    }
+
+    if (route.page === 'my-hours') {
+      return <MyHoursPage />;
+    }
+
+    if (route.page === 'reset-password') {
+      return <ResetPassword />;
+    }
+
+    if (route.page === 'setup') {
+      return <AdminSetup onComplete={() => { window.location.hash = '#/admin'; window.location.reload(); }} />;
+    }
+
+    if (route.page === 'admin') {
+      if (!session || !isAdmin) {
+        return <AdminLogin onLogin={signIn} />;
+      }
+      return <AdminLayout onSignOut={signOut} initialTab={route.params.tab || 'dashboard'} />;
+    }
+
+    return (
+      <>
+        <ClockPage />
+        <InstallPrompt />
+      </>
+    );
   }
 
   return (
     <>
-      <ClockPage />
-      <InstallPrompt />
+      {renderPage()}
+      <BugReportButton />
       {needRefresh && (
         <div className="fixed top-4 left-4 right-4 z-[9999] animate-slide-in">
           <div className="max-w-md mx-auto bg-moja-blue text-white rounded-xl shadow-2xl p-4 flex items-center gap-3">
