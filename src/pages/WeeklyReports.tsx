@@ -22,6 +22,14 @@ function formatDate(d: Date): string {
 
 const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
+function formatHM(decimalHours: number): string {
+  if (decimalHours <= 0) return '-';
+  const totalMinutes = Math.round(decimalHours * 60);
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
+  return `${h}h ${m.toString().padStart(2, '0')}m`;
+}
+
 function HoursBarChart({ data }: { data: { name: string; hours: number }[] }) {
   const maxHours = Math.max(...data.map(d => d.hours), 1);
 
@@ -30,7 +38,7 @@ function HoursBarChart({ data }: { data: { name: string; hours: number }[] }) {
       {data.map((d, i) => (
         <div key={i} className="flex-1 flex flex-col items-center gap-1">
           <span className="text-xs font-bold text-moja-blue/50 font-mono">
-            {d.hours > 0 ? d.hours.toFixed(1) : ''}
+            {d.hours > 0 ? formatHM(d.hours) : ''}
           </span>
           <div
             className="w-full rounded-t-md bg-moja-aqua/70 transition-all duration-500 min-h-[2px]"
@@ -132,21 +140,29 @@ export function WeeklyReports() {
 
     const data = filtered.map(staff => {
       const staffLogs = logs.filter(l => l.staff_id === staff.id);
-      const dailyHours = [0, 0, 0, 0, 0, 0, 0];
+      const dailyRaw = [0, 0, 0, 0, 0, 0, 0];
+      const dailyFinal = [0, 0, 0, 0, 0, 0, 0];
 
       staffLogs.forEach(log => {
-        if (!log.duration_minutes) return;
         const logDate = new Date(log.clock_in_time);
         let dayIndex = logDate.getDay() - 1;
         if (dayIndex < 0) dayIndex = 6;
-        dailyHours[dayIndex] += log.duration_minutes / 60;
+
+        if (log.clock_out_time) {
+          const rawMins = (new Date(log.clock_out_time).getTime() - logDate.getTime()) / 60000;
+          dailyRaw[dayIndex] += rawMins / 60;
+        }
+        if (log.duration_minutes) {
+          dailyFinal[dayIndex] += log.duration_minutes / 60;
+        }
       });
 
-      const totalHours = dailyHours.reduce((a, b) => a + b, 0);
-      const overtime = Math.max(0, totalHours - 40);
-      const regularHours = totalHours - overtime;
+      const totalRaw = dailyRaw.reduce((a, b) => a + b, 0);
+      const totalFinal = dailyFinal.reduce((a, b) => a + b, 0);
+      const overtime = Math.max(0, totalFinal - 40);
+      const regularHours = totalFinal - overtime;
 
-      return { staff, dailyHours, totalHours, overtime, regularHours };
+      return { staff, dailyRaw, dailyFinal, totalRaw, totalFinal, overtime, regularHours };
     });
 
     data.sort((a, b) => {
@@ -202,9 +218,10 @@ export function WeeklyReports() {
       });
 
       const rows: string[][] = [
-        ['Employee Name', 'Date', 'Clock In', 'Clock Out', 'Hours Worked', 'Overtime', 'Break (min)', 'Lunch (min)', 'Week Ending', 'Notes'],
+        ['Employee Name', 'Date', 'Clock In', 'Clock Out', 'Raw Time', 'Break', 'Lunch', 'Final Hours', 'Overtime', 'Week Ending', 'Notes'],
       ];
 
+      let grandTotalRaw = 0;
       let grandTotalHours = 0;
       let grandTotalOvertime = 0;
 
@@ -223,6 +240,7 @@ export function WeeklyReports() {
           weekGroups.get(weekKey)!.push(log);
         });
 
+        let staffTotalRaw = 0;
         let staffTotalHours = 0;
         let staffTotalOvertime = 0;
 
@@ -232,10 +250,12 @@ export function WeeklyReports() {
         sortedWeeks.forEach(([, weekLogs]) => {
           let weekTotal = 0;
           weekLogs.forEach(log => {
-            const hoursWorked = log.duration_minutes ? log.duration_minutes / 60 : 0;
-            weekTotal += hoursWorked;
             const clockIn = new Date(log.clock_in_time);
             const clockOut = log.clock_out_time ? new Date(log.clock_out_time) : null;
+            const rawMinutes = clockOut ? (clockOut.getTime() - clockIn.getTime()) / 60000 : 0;
+            const finalHours = log.duration_minutes ? log.duration_minutes / 60 : 0;
+            weekTotal += finalHours;
+            staffTotalRaw += rawMinutes / 60;
             const { end: weekEnd } = getWeekDates(clockIn);
 
             const logBreaks = rangeBreaks.filter(b => b.clock_log_id === log.id);
@@ -251,10 +271,11 @@ export function WeeklyReports() {
               formatDate(clockIn),
               clockIn.toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: true }),
               clockOut ? clockOut.toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: true }) : 'In Progress',
-              hoursWorked.toFixed(2),
+              formatHM(rawMinutes / 60),
+              breakMins > 0 ? `${breakMins}m` : '',
+              lunchMins > 0 ? `${lunchMins}m` : '',
+              formatHM(finalHours),
               '',
-              String(breakMins),
-              String(lunchMins),
               formatDate(weekEnd),
               log.notes || '',
             ]);
@@ -266,7 +287,7 @@ export function WeeklyReports() {
 
           // Mark overtime on last entry of the week
           if (weekOvertime > 0 && weekLogs.length > 0) {
-            rows[rows.length - 1][5] = weekOvertime.toFixed(2);
+            rows[rows.length - 1][8] = formatHM(weekOvertime);
           }
         });
 
@@ -276,15 +297,17 @@ export function WeeklyReports() {
           '',
           '',
           '',
-          staffTotalHours.toFixed(2),
-          staffTotalOvertime.toFixed(2),
+          formatHM(staffTotalRaw),
           '',
           '',
+          formatHM(staffTotalHours),
+          formatHM(staffTotalOvertime),
           '',
           '',
         ]);
-        rows.push(['', '', '', '', '', '', '', '', '', '']);
+        rows.push(['', '', '', '', '', '', '', '', '', '', '']);
 
+        grandTotalRaw += staffTotalRaw;
         grandTotalHours += staffTotalHours;
         grandTotalOvertime += staffTotalOvertime;
       });
@@ -295,10 +318,11 @@ export function WeeklyReports() {
         `${rangeStart} to ${rangeEnd}`,
         '',
         '',
-        grandTotalHours.toFixed(2),
-        grandTotalOvertime.toFixed(2),
+        formatHM(grandTotalRaw),
         '',
         '',
+        formatHM(grandTotalHours),
+        formatHM(grandTotalOvertime),
         '',
         '',
       ]);
@@ -317,7 +341,7 @@ export function WeeklyReports() {
 
   const dailyTotals = DAY_NAMES.map((name, i) => ({
     name,
-    hours: weekData.reduce((sum, d) => sum + d.dailyHours[i], 0),
+    hours: weekData.reduce((sum, d) => sum + d.dailyFinal[i], 0),
   }));
 
   return (
@@ -446,16 +470,16 @@ export function WeeklyReports() {
             <div className="mt-6 pt-4 border-t border-gray-100">
               <h3 className="text-sm font-bold text-moja-blue/60 mb-4 uppercase tracking-wide">By Staff Member</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {weekData.filter(d => d.totalHours > 0).map(d => (
+                {weekData.filter(d => d.totalFinal > 0).map(d => (
                   <div key={d.staff.id} className="border border-gray-100 rounded-lg p-3">
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-sm font-bold text-moja-blue">{d.staff.name}</span>
-                      <span className="text-sm font-bold text-moja-blue font-mono">{d.totalHours.toFixed(1)}h</span>
+                      <span className="text-sm font-bold text-moja-blue font-mono">{formatHM(d.totalFinal)}</span>
                     </div>
                     <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
                       <div
                         className={`h-full rounded-full transition-all ${d.overtime > 0 ? 'bg-moja-orange' : 'bg-moja-aqua'}`}
-                        style={{ width: `${Math.min(100, (d.totalHours / 40) * 100)}%` }}
+                        style={{ width: `${Math.min(100, (d.totalFinal / 40) * 100)}%` }}
                       />
                     </div>
                   </div>
@@ -490,28 +514,28 @@ export function WeeklyReports() {
                     {DAY_NAMES.map(day => (
                       <th key={day} className="text-center px-3 py-4 text-sm font-bold text-white">{day}</th>
                     ))}
-                    <th className="text-center px-3 py-4 text-sm font-bold text-white">Reg</th>
+                    <th className="text-center px-3 py-4 text-sm font-bold text-white">Raw</th>
+                    <th className="text-center px-3 py-4 text-sm font-bold text-white">Final</th>
                     <th className="text-center px-3 py-4 text-sm font-bold text-white">OT</th>
-                    <th className="text-center px-3 py-4 text-sm font-bold text-white">Total</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {weekData.map(({ staff, dailyHours, totalHours, overtime, regularHours }, idx) => (
+                  {weekData.map(({ staff, dailyFinal, totalRaw, totalFinal, overtime }, idx) => (
                     <tr key={staff.id} className={idx % 2 === 1 ? 'bg-gray-50/50' : ''}>
                       <td className="px-4 py-3 font-bold text-moja-blue">{staff.name}</td>
-                      {dailyHours.map((h, i) => (
+                      {dailyFinal.map((h, i) => (
                         <td key={i} className="text-center px-3 py-3 text-sm font-semibold text-moja-blue/70 font-mono">
-                          {h > 0 ? h.toFixed(1) : '-'}
+                          {h > 0 ? formatHM(h) : '-'}
                         </td>
                       ))}
-                      <td className="text-center px-3 py-3 font-bold text-moja-blue font-mono">
-                        {regularHours.toFixed(1)}
-                      </td>
-                      <td className={`text-center px-3 py-3 font-bold font-mono ${overtime > 0 ? 'text-moja-orange bg-moja-orange/10' : 'text-moja-blue/30'}`}>
-                        {overtime > 0 ? overtime.toFixed(1) : '-'}
+                      <td className="text-center px-3 py-3 font-semibold text-moja-blue/50 font-mono">
+                        {totalRaw > 0 ? formatHM(totalRaw) : '-'}
                       </td>
                       <td className="text-center px-3 py-3 font-bold text-moja-blue font-mono bg-moja-blue/5">
-                        {totalHours.toFixed(1)}
+                        {formatHM(totalFinal)}
+                      </td>
+                      <td className={`text-center px-3 py-3 font-bold font-mono ${overtime > 0 ? 'text-moja-orange bg-moja-orange/10' : 'text-moja-blue/30'}`}>
+                        {overtime > 0 ? formatHM(overtime) : '-'}
                       </td>
                     </tr>
                   ))}
@@ -527,17 +551,21 @@ export function WeeklyReports() {
                       <td className="px-4 py-3 text-moja-blue">Totals</td>
                       {DAY_NAMES.map((_, i) => (
                         <td key={i} className="text-center px-3 py-3 text-sm text-moja-blue font-mono">
-                          {weekData.reduce((s, d) => s + d.dailyHours[i], 0).toFixed(1)}
+                          {weekData.reduce((s, d) => s + d.dailyFinal[i], 0) > 0
+                            ? formatHM(weekData.reduce((s, d) => s + d.dailyFinal[i], 0))
+                            : '-'}
                         </td>
                       ))}
+                      <td className="text-center px-3 py-3 text-moja-blue/50 font-mono">
+                        {formatHM(weekData.reduce((s, d) => s + d.totalRaw, 0))}
+                      </td>
                       <td className="text-center px-3 py-3 text-moja-blue font-mono">
-                        {weekData.reduce((s, d) => s + d.regularHours, 0).toFixed(1)}
+                        {formatHM(weekData.reduce((s, d) => s + d.totalFinal, 0))}
                       </td>
                       <td className="text-center px-3 py-3 text-moja-orange font-mono">
-                        {weekData.reduce((s, d) => s + d.overtime, 0).toFixed(1)}
-                      </td>
-                      <td className="text-center px-3 py-3 text-moja-blue font-mono">
-                        {weekData.reduce((s, d) => s + d.totalHours, 0).toFixed(1)}
+                        {weekData.reduce((s, d) => s + d.overtime, 0) > 0
+                          ? formatHM(weekData.reduce((s, d) => s + d.overtime, 0))
+                          : '-'}
                       </td>
                     </tr>
                   )}

@@ -66,11 +66,11 @@ export function ClockPage() {
   }, []);
 
   useEffect(() => {
-    if (pin.length === 4 && !lookupDone.current) {
+    if (pin.length === 4 && !lookupDone.current && !loading) {
       lookupDone.current = true;
       lookupStaff(pin);
     }
-    if (pin.length < 4) {
+    if (pin.length < 4 && !loading) {
       lookupDone.current = false;
       setStaffInfo(null);
       setLookupError('');
@@ -87,6 +87,8 @@ export function ClockPage() {
         return;
       }
 
+      if (loading) return;
+
       if (e.key >= '0' && e.key <= '9') {
         setPin(prev => prev.length < 4 ? prev + e.key : prev);
       } else if (e.key === 'Backspace') {
@@ -101,7 +103,7 @@ export function ClockPage() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [shiftSummary]);
+  }, [shiftSummary, loading]);
 
   async function lookupStaff(pinValue: string) {
     setLookingUp(true);
@@ -142,7 +144,7 @@ export function ClockPage() {
   }, []);
 
   async function handleClock(action: 'in' | 'out') {
-    if (pin.length !== 4 || !staffInfo) return;
+    if (pin.length !== 4 || !staffInfo || loading) return;
     setLoading(true);
 
     const result = await callEdgeFunction(`/clock-${action}-by-pin`, { pin });
@@ -173,7 +175,7 @@ export function ClockPage() {
   }
 
   async function handleBreak(action: 'start' | 'end', breakType: 'break' | 'lunch' = 'break') {
-    if (pin.length !== 4 || !staffInfo) return;
+    if (pin.length !== 4 || !staffInfo || loading) return;
     setLoading(true);
 
     const endpoint = action === 'start' ? '/start-break' : '/end-break';
@@ -183,9 +185,10 @@ export function ClockPage() {
 
     if (result.success) {
       vibrate([50, 50]);
+      const resolvedType = result.break_type || breakType;
       const actionKey = action === 'start'
-        ? (breakType === 'lunch' ? 'start_lunch' : 'start_break')
-        : (breakType === 'lunch' ? 'end_lunch' : 'end_break');
+        ? (resolvedType === 'lunch' ? 'start_lunch' : 'start_break')
+        : (resolvedType === 'lunch' ? 'end_lunch' : 'end_break');
       setShiftSummary({
         staff_name: result.staff_name,
         action: actionKey as ShiftSummary['action'],
@@ -557,33 +560,37 @@ export function ClockPage() {
               </div>
 
               {/* Numeric Keypad */}
-              <div className="px-4 pb-3 sm:px-5 sm:pb-4">
+              <div className={`px-4 pb-3 sm:px-5 sm:pb-4 ${loading ? 'pointer-events-none opacity-50' : ''}`}>
                 <div className="grid grid-cols-3 gap-2 sm:gap-2.5 max-w-[260px] sm:max-w-[280px] mx-auto">
                   {['1','2','3','4','5','6','7','8','9'].map(digit => (
                     <button
                       key={digit}
                       onClick={() => handleDigit(digit)}
-                      className="h-[52px] sm:h-[60px] rounded-xl bg-moja-blue text-white text-lg sm:text-xl font-bold hover:bg-moja-blue/80 active:scale-95 transition-all touch-manipulation"
+                      disabled={loading}
+                      className="h-[52px] sm:h-[60px] rounded-xl bg-moja-blue text-white text-lg sm:text-xl font-bold hover:bg-moja-blue/80 active:scale-95 transition-all touch-manipulation disabled:opacity-50"
                     >
                       {digit}
                     </button>
                   ))}
                   <button
                     onClick={handleClear}
-                    className="h-[52px] sm:h-[60px] rounded-xl bg-moja-yellow/30 hover:bg-moja-yellow/50 active:scale-95 text-xs font-bold text-moja-blue transition-all flex items-center justify-center gap-1 touch-manipulation"
+                    disabled={loading}
+                    className="h-[52px] sm:h-[60px] rounded-xl bg-moja-yellow/30 hover:bg-moja-yellow/50 active:scale-95 text-xs font-bold text-moja-blue transition-all flex items-center justify-center gap-1 touch-manipulation disabled:opacity-50"
                   >
                     <RotateCcw className="w-3.5 h-3.5" />
                     Clear
                   </button>
                   <button
                     onClick={() => handleDigit('0')}
-                    className="h-[52px] sm:h-[60px] rounded-xl bg-moja-blue text-white text-lg sm:text-xl font-bold hover:bg-moja-blue/80 active:scale-95 transition-all touch-manipulation"
+                    disabled={loading}
+                    className="h-[52px] sm:h-[60px] rounded-xl bg-moja-blue text-white text-lg sm:text-xl font-bold hover:bg-moja-blue/80 active:scale-95 transition-all touch-manipulation disabled:opacity-50"
                   >
                     0
                   </button>
                   <button
                     onClick={handleDelete}
-                    className="h-[52px] sm:h-[60px] rounded-xl bg-moja-pink/20 hover:bg-moja-pink/40 active:scale-95 text-xs font-bold text-moja-blue transition-all flex items-center justify-center gap-1 touch-manipulation"
+                    disabled={loading}
+                    className="h-[52px] sm:h-[60px] rounded-xl bg-moja-pink/20 hover:bg-moja-pink/40 active:scale-95 text-xs font-bold text-moja-blue transition-all flex items-center justify-center gap-1 touch-manipulation disabled:opacity-50"
                   >
                     <Delete className="w-3.5 h-3.5" />
                     Del
@@ -634,8 +641,14 @@ export function ClockPage() {
                         : 'bg-amber-50 text-amber-700 border-2 border-amber-200 hover:bg-amber-100'
                     }`}
                   >
-                    <UtensilsCrossed className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                    {staffInfo?.is_on_break ? 'End Lunch' : 'Lunch'}
+                    {loading ? (
+                      <div className={`w-4 h-4 border-2 border-t-transparent rounded-full animate-spin ${staffInfo?.is_on_break ? 'border-white' : 'border-amber-700'}`} />
+                    ) : (
+                      <>
+                        <UtensilsCrossed className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                        {staffInfo?.is_on_break ? 'End Lunch' : 'Lunch'}
+                      </>
+                    )}
                   </button>
                   <button
                     onClick={() => handleBreak(staffInfo?.is_on_break ? 'end' : 'start', 'break')}
@@ -646,8 +659,14 @@ export function ClockPage() {
                         : 'bg-sky-50 text-sky-700 border-2 border-sky-200 hover:bg-sky-100'
                     }`}
                   >
-                    <Coffee className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                    {staffInfo?.is_on_break ? 'End Break' : 'Break'}
+                    {loading ? (
+                      <div className={`w-4 h-4 border-2 border-t-transparent rounded-full animate-spin ${staffInfo?.is_on_break ? 'border-white' : 'border-sky-700'}`} />
+                    ) : (
+                      <>
+                        <Coffee className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                        {staffInfo?.is_on_break ? 'End Break' : 'Break'}
+                      </>
+                    )}
                   </button>
                 </div>
               </div>

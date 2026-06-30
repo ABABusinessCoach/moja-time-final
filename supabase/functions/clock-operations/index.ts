@@ -20,6 +20,27 @@ function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
+async function isPasswordLeaked(password: string): Promise<boolean> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(password);
+  const hashBuffer = await crypto.subtle.digest("SHA-1", data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  const hashHex = hashArray.map(b => b.toString(16).padStart(2, "0")).join("").toUpperCase();
+  const prefix = hashHex.slice(0, 5);
+  const suffix = hashHex.slice(5);
+
+  try {
+    const response = await fetch(`https://api.pwnedpasswords.com/range/${prefix}`, {
+      headers: { "User-Agent": "MojaTimeClock-PasswordCheck" },
+    });
+    if (!response.ok) return false;
+    const text = await response.text();
+    return text.split("\n").some(line => line.startsWith(suffix));
+  } catch {
+    return false;
+  }
+}
+
 function toEST(date: Date): Date {
   const estStr = date.toLocaleString("en-US", { timeZone: "America/New_York" });
   return new Date(estStr);
@@ -198,6 +219,10 @@ Deno.serve(async (req: Request) => {
         return json({ success: false, message: "Password must be at least 6 characters" }, 400);
       }
 
+      if (await isPasswordLeaked(password)) {
+        return json({ success: false, message: "This password has appeared in a data breach. Please choose a different password." }, 400);
+      }
+
       const { data: existingAdmins } = await supabase
         .from("admins")
         .select("id")
@@ -253,6 +278,10 @@ Deno.serve(async (req: Request) => {
 
       if (password.length < 6) {
         return json({ success: false, message: "Password must be at least 6 characters" }, 400);
+      }
+
+      if (await isPasswordLeaked(password)) {
+        return json({ success: false, message: "This password has appeared in a data breach. Please choose a different password." }, 400);
       }
 
       const { data: authData, error: signUpError } = await supabase.auth.admin.createUser({
@@ -704,44 +733,51 @@ Deno.serve(async (req: Request) => {
         return json({ success: false, message: "Invalid PIN" }, 401);
       }
 
-      if (!matchedStaff.is_on_break) {
-        return json({ success: false, message: "Not currently on break" }, 400);
-      }
-
       const now = new Date();
 
+      // Find the most recent open break log regardless of is_on_break flag
       const { data: openBreak } = await supabase
         .from("break_logs")
-        .select("id, break_start")
+        .select("id, break_start, break_type")
         .eq("staff_id", matchedStaff.id)
         .is("break_end", null)
         .order("break_start", { ascending: false })
         .limit(1)
         .maybeSingle();
 
-      if (!openBreak) {
-        return json({ success: false, message: "No open break found" }, 400);
+      if (!openBreak && !matchedStaff.is_on_break) {
+        return json({ success: false, message: "Not currently on break" }, 400);
       }
 
-      const breakStart = new Date(openBreak.break_start);
-      const breakDuration = Math.round(
-        (now.getTime() - breakStart.getTime()) / 60000
-      );
+      let breakDuration = 0;
+      let breakType = "break";
 
-      await supabase
-        .from("break_logs")
-        .update({ break_end: toESTISO(now), duration_minutes: breakDuration })
-        .eq("id", openBreak.id);
+      if (openBreak) {
+        const breakStart = new Date(openBreak.break_start);
+        breakDuration = Math.round(
+          (now.getTime() - breakStart.getTime()) / 60000
+        );
+        breakType = openBreak.break_type || "break";
 
-      await supabase
-        .from("staff")
-        .update({ is_on_break: false })
-        .eq("id", matchedStaff.id);
+        await supabase
+          .from("break_logs")
+          .update({ break_end: toESTISO(now), duration_minutes: breakDuration })
+          .eq("id", openBreak.id);
+      }
+
+      // Always ensure staff flag is cleared
+      if (matchedStaff.is_on_break) {
+        await supabase
+          .from("staff")
+          .update({ is_on_break: false })
+          .eq("id", matchedStaff.id);
+      }
 
       return json({
         success: true,
         timestamp: toESTISO(now),
         action: "end_break",
+        break_type: breakType,
         staff_name: matchedStaff.name,
         break_duration_minutes: breakDuration,
       });
@@ -1572,6 +1608,10 @@ Deno.serve(async (req: Request) => {
           { success: false, message: "Password must be at least 6 characters" },
           400
         );
+      }
+
+      if (await isPasswordLeaked(new_password)) {
+        return json({ success: false, message: "This password has appeared in a data breach. Please choose a different password." }, 400);
       }
 
       const { data: resetToken } = await supabase
