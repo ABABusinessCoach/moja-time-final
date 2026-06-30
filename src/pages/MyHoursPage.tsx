@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { callEdgeFunction } from '../lib/supabase';
-import { ArrowLeft, Clock, Coffee, TrendingUp } from 'lucide-react';
+import { ArrowLeft, Clock, Coffee, TrendingUp, Calendar } from 'lucide-react';
 import { BrandAccents, BrandDots } from '../components/BrandAccents';
 
 interface HoursLog {
@@ -18,17 +18,25 @@ interface HoursBreak {
   duration_minutes: number | null;
 }
 
+interface WeekData {
+  start: string;
+  end: string;
+  logs: HoursLog[];
+  breaks: HoursBreak[];
+  total_hours: number;
+}
+
 interface HoursData {
   staff_name: string;
   is_clocked_in: boolean;
   is_on_break: boolean;
-  week_start: string;
-  week_end: string;
-  logs: HoursLog[];
-  breaks: HoursBreak[];
+  pay_period_start: string;
+  pay_period_end: string;
+  current_week: 1 | 2;
+  week1: WeekData;
+  week2: WeekData;
   total_hours: number;
   overtime_threshold: number;
-  remaining_hours: number;
 }
 
 export function MyHoursPage() {
@@ -36,6 +44,7 @@ export function MyHoursPage() {
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<HoursData | null>(null);
   const [error, setError] = useState('');
+  const [activeWeek, setActiveWeek] = useState<1 | 2>(1);
 
   async function fetchHours() {
     if (pin.length !== 4) return;
@@ -45,7 +54,9 @@ export function MyHoursPage() {
     const result = await callEdgeFunction('/my-hours', { pin });
 
     if (result.success) {
-      setData(result as unknown as HoursData);
+      const d = result as unknown as HoursData;
+      setData(d);
+      setActiveWeek(d.current_week);
     } else {
       setError(result.message || 'Failed to load hours');
     }
@@ -69,16 +80,21 @@ export function MyHoursPage() {
   function formatDuration(mins: number): string {
     const h = Math.floor(mins / 60);
     const m = Math.round(mins % 60);
-    return `${h}h ${m}m`;
+    return `${h}h ${m.toString().padStart(2, '0')}m`;
   }
 
-  const progressPercent = data
-    ? Math.min(100, (data.total_hours / data.overtime_threshold) * 100)
-    : 0;
+  function formatShortDate(dateStr: string): string {
+    return new Date(dateStr).toLocaleDateString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric' });
+  }
 
   if (data) {
+    const currentWeekData = activeWeek === 1 ? data.week1 : data.week2;
+    const weekHours = currentWeekData.total_hours;
+    const progressPercent = Math.min(100, (weekHours / data.overtime_threshold) * 100);
+    const payPeriodTotal = data.total_hours;
+
     const breaksByLog = new Map<string, HoursBreak[]>();
-    data.breaks.forEach(b => {
+    currentWeekData.breaks.forEach(b => {
       const list = breaksByLog.get(b.clock_log_id) || [];
       list.push(b);
       breaksByLog.set(b.clock_log_id, list);
@@ -89,7 +105,7 @@ export function MyHoursPage() {
         <BrandAccents />
         <div className="relative z-10 max-w-lg mx-auto p-4 sm:p-6">
           {/* Header */}
-          <div className="flex items-center gap-3 mb-6">
+          <div className="flex items-center gap-3 mb-5">
             <button
               onClick={() => { setData(null); setPin(''); }}
               className="p-2 hover:bg-white rounded-lg transition-colors"
@@ -99,7 +115,7 @@ export function MyHoursPage() {
             <div>
               <h1 className="text-xl font-bold text-moja-blue">{data.staff_name}</h1>
               <p className="text-xs font-semibold text-moja-blue/50">
-                Week of {new Date(data.week_start).toLocaleDateString('en-US', { timeZone: 'America/New_York', month: 'long', day: 'numeric' })}
+                Pay Period: {formatShortDate(data.pay_period_start)} - {formatShortDate(data.pay_period_end)}
               </p>
             </div>
             {data.is_clocked_in && (
@@ -109,15 +125,63 @@ export function MyHoursPage() {
             )}
           </div>
 
-          {/* Weekly Summary Card */}
+          {/* Pay Period Summary */}
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 mb-4">
+            <div className="flex items-center justify-between mb-1">
+              <div className="flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-moja-blue/50" />
+                <span className="text-xs font-bold text-moja-blue/60 uppercase tracking-wide">Pay Period Total</span>
+              </div>
+              <span className="text-xl font-bold text-moja-blue font-mono">
+                {formatDuration(payPeriodTotal * 60)}
+              </span>
+            </div>
+            <div className="flex items-center gap-3 text-xs font-semibold text-moja-blue/40">
+              <span>Wk 1: {formatDuration(data.week1.total_hours * 60)}</span>
+              <span className="text-moja-blue/20">|</span>
+              <span>Wk 2: {formatDuration(data.week2.total_hours * 60)}</span>
+            </div>
+          </div>
+
+          {/* Week Tabs */}
+          <div className="flex gap-2 mb-4">
+            <button
+              onClick={() => setActiveWeek(1)}
+              className={`flex-1 py-3 px-4 rounded-xl font-bold text-sm transition-all ${
+                activeWeek === 1
+                  ? 'bg-moja-blue text-white shadow-md'
+                  : 'bg-white text-moja-blue/60 border border-gray-100 hover:border-moja-blue/30'
+              }`}
+            >
+              <span className="block">Week 1</span>
+              <span className={`text-xs font-semibold ${activeWeek === 1 ? 'text-white/70' : 'text-moja-blue/40'}`}>
+                {formatShortDate(data.week1.start)} - {formatShortDate(data.week1.end)}
+              </span>
+            </button>
+            <button
+              onClick={() => setActiveWeek(2)}
+              className={`flex-1 py-3 px-4 rounded-xl font-bold text-sm transition-all ${
+                activeWeek === 2
+                  ? 'bg-moja-blue text-white shadow-md'
+                  : 'bg-white text-moja-blue/60 border border-gray-100 hover:border-moja-blue/30'
+              }`}
+            >
+              <span className="block">Week 2</span>
+              <span className={`text-xs font-semibold ${activeWeek === 2 ? 'text-white/70' : 'text-moja-blue/40'}`}>
+                {formatShortDate(data.week2.start)} - {formatShortDate(data.week2.end)}
+              </span>
+            </button>
+          </div>
+
+          {/* Weekly Hours Card */}
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 mb-4">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
                 <TrendingUp className="w-5 h-5 text-moja-aqua" />
-                <span className="text-sm font-bold text-moja-blue">Weekly Total</span>
+                <span className="text-sm font-bold text-moja-blue">Week {activeWeek} Hours</span>
               </div>
               <span className="text-2xl font-bold text-moja-blue font-mono">
-                {data.total_hours}h
+                {formatDuration(weekHours * 60)}
               </span>
             </div>
 
@@ -129,18 +193,13 @@ export function MyHoursPage() {
                 }`}
                 style={{ width: `${progressPercent}%` }}
               />
-              {/* OT warning line at threshold */}
-              <div
-                className="absolute inset-y-0 w-0.5 bg-moja-blue/30"
-                style={{ left: '100%' }}
-              />
             </div>
             <div className="flex justify-between text-xs font-semibold text-moja-blue/50">
               <span>0h</span>
               <span>
-                {data.remaining_hours > 0
-                  ? `${data.remaining_hours}h until OT`
-                  : `${(data.total_hours - data.overtime_threshold).toFixed(1)}h overtime`}
+                {weekHours < data.overtime_threshold
+                  ? `${formatDuration((data.overtime_threshold - weekHours) * 60)} until OT`
+                  : `${formatDuration((weekHours - data.overtime_threshold) * 60)} overtime`}
               </span>
               <span>{data.overtime_threshold}h</span>
             </div>
@@ -150,16 +209,16 @@ export function MyHoursPage() {
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
             <div className="px-5 py-3 border-b border-gray-100 flex items-center gap-2">
               <Clock className="w-4 h-4 text-moja-blue/50" />
-              <span className="text-sm font-bold text-moja-blue">Shifts This Week</span>
+              <span className="text-sm font-bold text-moja-blue">Shifts - Week {activeWeek}</span>
             </div>
 
-            {data.logs.length === 0 ? (
+            {currentWeekData.logs.length === 0 ? (
               <div className="p-6 text-center text-moja-blue/40 font-semibold text-sm">
                 No shifts recorded this week
               </div>
             ) : (
               <div className="divide-y divide-gray-50">
-                {data.logs.map(log => {
+                {currentWeekData.logs.map(log => {
                   const logBreaks = breaksByLog.get(log.id) || [];
                   const totalBreakMins = logBreaks.reduce((s, b) => s + (b.duration_minutes || 0), 0);
 

@@ -406,12 +406,32 @@ Deno.serve(async (req: Request) => {
       }
 
       await recordAttempt(supabase, ipAddress, true);
+
+      let breakStart = null;
+      let breakType = null;
+      if (matchedStaff.is_on_break) {
+        const { data: openBreak } = await supabase
+          .from("break_logs")
+          .select("break_start, break_type")
+          .eq("staff_id", matchedStaff.id)
+          .is("break_end", null)
+          .order("break_start", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (openBreak) {
+          breakStart = openBreak.break_start;
+          breakType = openBreak.break_type;
+        }
+      }
+
       return json({
         success: true,
         staff_name: matchedStaff.name,
         staff_id: matchedStaff.id,
         is_clocked_in: matchedStaff.is_clocked_in,
         is_on_break: matchedStaff.is_on_break || false,
+        break_start: breakStart,
+        break_type: breakType,
       });
     }
 
@@ -818,31 +838,74 @@ Deno.serve(async (req: Request) => {
         return json({ success: false, message: "Invalid PIN" }, 401);
       }
 
-      const weekStart = getWeekStart(new Date());
-      const weekEnd = new Date(weekStart);
-      weekEnd.setDate(weekStart.getDate() + 6);
-      weekEnd.setHours(23, 59, 59, 999);
+      // Determine bi-weekly pay period (Saturday-Friday, cutoff every other Friday)
+      // Reference: June 27, 2026 (Saturday) is a known pay period start
+      // Last cutoff was Fri Jun 26, next is Fri Jul 10
+      const refDate = new Date("2026-06-27T00:00:00");
+      const now = toEST(new Date());
+      now.setHours(0, 0, 0, 0);
+
+      // Find the Saturday that starts the current week (Sat-Fri week)
+      const dayOfWeek = now.getDay(); // 0=Sun, 6=Sat
+      const daysSinceSat = dayOfWeek === 6 ? 0 : dayOfWeek + 1;
+      const currentWeekSat = new Date(now);
+      currentWeekSat.setDate(now.getDate() - daysSinceSat);
+
+      const msSinceRef = currentWeekSat.getTime() - refDate.getTime();
+      const weeksSinceRef = Math.round(msSinceRef / (7 * 24 * 60 * 60 * 1000));
+      const isSecondWeek = weeksSinceRef % 2 !== 0;
+
+      const payPeriodStart = new Date(currentWeekSat);
+      if (isSecondWeek) {
+        payPeriodStart.setDate(payPeriodStart.getDate() - 7);
+      }
+      const payPeriodEnd = new Date(payPeriodStart);
+      payPeriodEnd.setDate(payPeriodStart.getDate() + 13);
+      payPeriodEnd.setHours(23, 59, 59, 999);
+
+      const week1Start = new Date(payPeriodStart);
+      const week1End = new Date(payPeriodStart);
+      week1End.setDate(week1Start.getDate() + 6);
+      week1End.setHours(23, 59, 59, 999);
+
+      const week2Start = new Date(payPeriodStart);
+      week2Start.setDate(payPeriodStart.getDate() + 7);
+      const week2End = new Date(payPeriodEnd);
 
       const { data: logs } = await supabase
         .from("clock_logs")
         .select("id, clock_in_time, clock_out_time, duration_minutes, notes")
         .eq("staff_id", matchedStaff.id)
-        .gte("clock_in_time", weekStart.toISOString())
-        .lte("clock_in_time", weekEnd.toISOString())
+        .gte("clock_in_time", payPeriodStart.toISOString())
+        .lte("clock_in_time", payPeriodEnd.toISOString())
         .order("clock_in_time");
 
       const { data: breaks } = await supabase
         .from("break_logs")
         .select("clock_log_id, break_start, break_end, duration_minutes")
         .eq("staff_id", matchedStaff.id)
-        .gte("break_start", weekStart.toISOString())
-        .lte("break_start", weekEnd.toISOString());
+        .gte("break_start", payPeriodStart.toISOString())
+        .lte("break_start", payPeriodEnd.toISOString());
 
-      const totalMinutes = (logs || []).reduce(
-        (sum: number, l: { duration_minutes: number | null }) =>
-          sum + (l.duration_minutes || 0),
+      const allLogs = logs || [];
+      const allBreaks = breaks || [];
+
+      const week1Logs = allLogs.filter(
+        (l: { clock_in_time: string }) => new Date(l.clock_in_time) <= week1End
+      );
+      const week2Logs = allLogs.filter(
+        (l: { clock_in_time: string }) => new Date(l.clock_in_time) > week1End
+      );
+
+      const week1Minutes = week1Logs.reduce(
+        (sum: number, l: { duration_minutes: number | null }) => sum + (l.duration_minutes || 0),
         0
       );
+      const week2Minutes = week2Logs.reduce(
+        (sum: number, l: { duration_minutes: number | null }) => sum + (l.duration_minutes || 0),
+        0
+      );
+      const totalMinutes = week1Minutes + week2Minutes;
 
       const { data: settings } = await supabase
         .from("app_settings")
@@ -853,21 +916,32 @@ Deno.serve(async (req: Request) => {
         settings?.find((s: { key: string }) => s.key === "overtime_weekly_threshold")
           ?.value || 40;
 
+      const currentWeekNum = isSecondWeek ? 2 : 1;
+
       return json({
         success: true,
         staff_name: matchedStaff.name,
         is_clocked_in: matchedStaff.is_clocked_in,
         is_on_break: matchedStaff.is_on_break || false,
-        week_start: toESTISO(weekStart),
-        week_end: toESTISO(weekEnd),
-        logs: logs || [],
-        breaks: breaks || [],
+        pay_period_start: toESTISO(payPeriodStart),
+        pay_period_end: toESTISO(payPeriodEnd),
+        current_week: currentWeekNum,
+        week1: {
+          start: toESTISO(week1Start),
+          end: toESTISO(week1End),
+          logs: week1Logs,
+          breaks: allBreaks.filter((b: { break_start: string }) => new Date(b.break_start) <= week1End),
+          total_hours: Math.round((week1Minutes / 60) * 10) / 10,
+        },
+        week2: {
+          start: toESTISO(week2Start),
+          end: toESTISO(week2End),
+          logs: week2Logs,
+          breaks: allBreaks.filter((b: { break_start: string }) => new Date(b.break_start) > week1End),
+          total_hours: Math.round((week2Minutes / 60) * 10) / 10,
+        },
         total_hours: Math.round((totalMinutes / 60) * 10) / 10,
         overtime_threshold: Number(overtimeThreshold),
-        remaining_hours:
-          Math.round(
-            (Math.max(0, Number(overtimeThreshold) * 60 - totalMinutes) / 60) * 10
-          ) / 10,
       });
     }
 

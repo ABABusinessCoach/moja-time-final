@@ -1,14 +1,48 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { LogIn, LogOut, UtensilsCrossed, Coffee, Delete, RotateCcw, User } from 'lucide-react';
+import { LogIn, LogOut, UtensilsCrossed, Coffee, Delete, RotateCcw, User, Timer } from 'lucide-react';
 import { callEdgeFunction } from '../lib/supabase';
 import { Toast } from '../components/Toast';
 import { BrandAccents, BrandDots } from '../components/BrandAccents';
+
+function BreakTimer({ breakStart }: { breakStart: string }) {
+  const [elapsed, setElapsed] = useState('');
+
+  useEffect(() => {
+    function tick() {
+      const startMs = new Date(breakStart).getTime();
+      const nowMs = Date.now();
+      const diffSec = Math.max(0, Math.floor((nowMs - startMs) / 1000));
+      const h = Math.floor(diffSec / 3600);
+      const m = Math.floor((diffSec % 3600) / 60);
+      const s = diffSec % 60;
+      if (h > 0) {
+        setElapsed(`${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`);
+      } else {
+        setElapsed(`${m}:${s.toString().padStart(2, '0')}`);
+      }
+    }
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [breakStart]);
+
+  return (
+    <div className="flex items-center gap-1.5 mt-1.5 animate-fade-in">
+      <Timer className="w-3.5 h-3.5 text-amber-600 animate-pulse" />
+      <span className="text-sm font-bold text-amber-700 font-mono tabular-nums tracking-tight">
+        {elapsed}
+      </span>
+    </div>
+  );
+}
 
 interface StaffLookup {
   staff_name: string;
   staff_id: string;
   is_clocked_in: boolean;
   is_on_break: boolean;
+  break_start: string | null;
+  break_type: 'break' | 'lunch' | null;
 }
 
 interface ShiftSummary {
@@ -116,6 +150,8 @@ export function ClockPage() {
         staff_id: result.staff_id,
         is_clocked_in: result.is_clocked_in,
         is_on_break: result.is_on_break || false,
+        break_start: result.break_start || null,
+        break_type: result.break_type || null,
       });
     } else {
       setLookupError(result.message || 'Invalid PIN');
@@ -485,14 +521,14 @@ export function ClockPage() {
             <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
               {/* Staff name display */}
               {staffInfo && (
-                <div className={`px-4 py-3 sm:px-5 sm:py-4 border-b flex items-center gap-3 animate-fade-in ${
+                <div className={`px-5 py-5 sm:px-6 sm:py-6 border-b-2 flex items-center gap-4 animate-fade-in ${
                   staffInfo.is_on_break
-                    ? 'bg-amber-50 border-amber-100'
+                    ? 'bg-amber-50 border-amber-200'
                     : staffInfo.is_clocked_in
-                      ? 'bg-green-50 border-green-100'
-                      : 'bg-moja-bg border-gray-100'
+                      ? 'bg-green-50 border-green-200'
+                      : 'bg-moja-bg border-gray-200'
                 }`}>
-                  <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full flex items-center justify-center ${
+                  <div className={`w-14 h-14 sm:w-16 sm:h-16 rounded-2xl flex items-center justify-center shadow-sm ${
                     staffInfo.is_on_break
                       ? 'bg-amber-100'
                       : staffInfo.is_clocked_in
@@ -500,25 +536,37 @@ export function ClockPage() {
                         : 'bg-moja-blue/10'
                   }`}>
                     {staffInfo.is_on_break
-                      ? <UtensilsCrossed className="w-4 h-4 sm:w-5 sm:h-5 text-amber-600" />
-                      : <User className={`w-4 h-4 sm:w-5 sm:h-5 ${staffInfo.is_clocked_in ? 'text-green-600' : 'text-moja-blue'}`} />
+                      ? <UtensilsCrossed className="w-7 h-7 sm:w-8 sm:h-8 text-amber-600" />
+                      : <User className={`w-7 h-7 sm:w-8 sm:h-8 ${staffInfo.is_clocked_in ? 'text-green-600' : 'text-moja-blue'}`} />
                     }
                   </div>
-                  <div>
-                    <p className="text-sm sm:text-base font-bold text-moja-blue">{staffInfo.staff_name}</p>
-                    <p className={`text-xs font-semibold ${
-                      staffInfo.is_on_break
-                        ? 'text-amber-600'
-                        : staffInfo.is_clocked_in
-                          ? 'text-green-600'
-                          : 'text-moja-blue/50'
-                    }`}>
-                      {staffInfo.is_on_break
-                        ? 'On lunch break'
-                        : staffInfo.is_clocked_in
-                          ? 'Currently clocked in'
-                          : 'Currently clocked out'}
-                    </p>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-lg sm:text-xl font-bold text-moja-blue truncate">{staffInfo.staff_name}</p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold ${
+                        staffInfo.is_on_break
+                          ? 'bg-amber-200/70 text-amber-800'
+                          : staffInfo.is_clocked_in
+                            ? 'bg-green-200/70 text-green-800'
+                            : 'bg-gray-200/70 text-gray-600'
+                      }`}>
+                        <span className={`w-2 h-2 rounded-full ${
+                          staffInfo.is_on_break
+                            ? 'bg-amber-500 animate-pulse'
+                            : staffInfo.is_clocked_in
+                              ? 'bg-green-500 animate-pulse'
+                              : 'bg-gray-400'
+                        }`} />
+                        {staffInfo.is_on_break
+                          ? `On ${staffInfo.break_type === 'lunch' ? 'Lunch' : 'Break'}`
+                          : staffInfo.is_clocked_in
+                            ? 'Clocked In'
+                            : 'Clocked Out'}
+                      </span>
+                    </div>
+                    {staffInfo.is_on_break && staffInfo.break_start && (
+                      <BreakTimer breakStart={staffInfo.break_start} />
+                    )}
                   </div>
                 </div>
               )}
