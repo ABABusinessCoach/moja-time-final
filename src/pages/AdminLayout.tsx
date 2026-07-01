@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { LayoutDashboard, Users, Calendar, Send, LogOut, Clock, FileText, History, Settings, Bug } from 'lucide-react';
+import { LayoutDashboard, Users, Calendar, Send, LogOut, Clock, FileText, History, Settings, Bug, ClipboardCheck } from 'lucide-react';
 import { AdminDashboard } from './AdminDashboard';
 import { StaffManagement } from './StaffManagement';
 import { WeeklyReports } from './WeeklyReports';
@@ -8,6 +8,7 @@ import { TimeLogs } from './TimeLogs';
 import { AuditLog } from './AuditLog';
 import { AdminSettings } from './AdminSettings';
 import { BugReports } from './BugReports';
+import { TimecardReview } from './TimecardReview';
 import { BrandDots } from '../components/BrandAccents';
 
 interface AdminLayoutProps {
@@ -20,6 +21,7 @@ const TABS = [
   { id: 'staff', label: 'Staff', icon: Users },
   { id: 'logs', label: 'Time Logs', icon: FileText },
   { id: 'reports', label: 'Reports', icon: Calendar },
+  { id: 'timecards', label: 'Timecards', icon: ClipboardCheck },
   { id: 'invitations', label: 'Invitations', icon: Send },
   { id: 'audit', label: 'Audit Log', icon: History },
   { id: 'bugs', label: 'Bugs', icon: Bug },
@@ -90,6 +92,7 @@ export function AdminLayout({ onSignOut, initialTab = 'dashboard' }: AdminLayout
         {activeTab === 'staff' && <StaffManagement />}
         {activeTab === 'logs' && <TimeLogs />}
         {activeTab === 'reports' && <WeeklyReports />}
+        {activeTab === 'timecards' && <TimecardReview />}
         {activeTab === 'invitations' && <Invitations />}
         {activeTab === 'audit' && <AuditLog />}
         {activeTab === 'bugs' && <BugReports />}

@@ -8,6 +8,7 @@ import { AdminSetup } from './pages/AdminSetup';
 import { RegisterPage } from './pages/RegisterPage';
 import { ResetPassword } from './pages/ResetPassword';
 import { MyHoursPage } from './pages/MyHoursPage';
+import { TimecardReportPage } from './pages/TimecardReportPage';
 import { InstallPrompt } from './components/InstallPrompt';
 import { BugReportButton } from './components/BugReportButton';
 
@@ -15,6 +16,9 @@ function getRoute(): { page: string; params: Record<string, string> } {
   const hash = window.location.hash.slice(1) || '/';
   if (hash.startsWith('/register/')) {
     return { page: 'register', params: { token: hash.replace('/register/', '') } };
+  }
+  if (hash.startsWith('/timecard/')) {
+    return { page: 'timecard', params: { token: hash.replace('/timecard/', '') } };
   }
   if (hash.startsWith('/my-hours')) {
     return { page: 'my-hours', params: {} };
@@ -27,6 +31,9 @@ function getRoute(): { page: string; params: Record<string, string> } {
   }
   if (hash.startsWith('/admin/invitations')) {
     return { page: 'admin', params: { tab: 'invitations' } };
+  }
+  if (hash.startsWith('/admin/timecards')) {
+    return { page: 'admin', params: { tab: 'timecards' } };
   }
   if (hash.startsWith('/admin')) {
     return { page: 'admin', params: {} };
@@ -57,6 +64,10 @@ export default function App() {
 
     if (route.page === 'register') {
       return <RegisterPage token={route.params.token} />;
+    }
+
+    if (route.page === 'timecard') {
+      return <TimecardReportPage token={route.params.token} />;
     }
 
     if (route.page === 'my-hours') {
