@@ -16,6 +16,7 @@ interface HoursBreak {
   break_start: string;
   break_end: string | null;
   duration_minutes: number | null;
+  break_type: string;
 }
 
 interface WeekData {
@@ -78,9 +79,8 @@ export function MyHoursPage() {
   }
 
   function formatDuration(mins: number): string {
-    const h = Math.floor(mins / 60);
-    const m = Math.round(mins % 60);
-    return `${h}h ${m.toString().padStart(2, '0')}m`;
+    if (mins <= 0) return '0.00';
+    return (mins / 60).toFixed(2);
   }
 
   function formatShortDate(dateStr: string): string {
@@ -221,6 +221,8 @@ export function MyHoursPage() {
                 {currentWeekData.logs.map(log => {
                   const logBreaks = breaksByLog.get(log.id) || [];
                   const totalBreakMins = logBreaks.reduce((s, b) => s + (b.duration_minutes || 0), 0);
+                  const lunchMins = logBreaks.filter(b => b.break_type === 'lunch').reduce((s, b) => s + (b.duration_minutes || 0), 0);
+                  const netMinutes = log.duration_minutes != null ? log.duration_minutes - lunchMins : null;
 
                   return (
                     <div key={log.id} className="px-5 py-3">
@@ -234,9 +236,9 @@ export function MyHoursPage() {
                             {log.clock_out_time ? ` - ${formatTime(log.clock_out_time)}` : ' (active)'}
                           </span>
                         </div>
-                        {log.duration_minutes != null && (
+                        {netMinutes != null && (
                           <span className="text-sm font-bold text-moja-blue font-mono">
-                            {formatDuration(log.duration_minutes)}
+                            {formatDuration(netMinutes)}
                           </span>
                         )}
                         {!log.clock_out_time && (

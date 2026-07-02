@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
-import { MessageSquare, CheckCircle, Clock, AlertTriangle, Send, XCircle, FileText, RefreshCw, Coffee, Radio, ChevronRight, ArrowLeft, User } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { MessageSquare, CheckCircle, Clock, AlertTriangle, XCircle, FileText, RefreshCw, Radio, ChevronRight, ArrowLeft, Pencil, Save, X } from 'lucide-react';
 import { callTimecardFunction } from '../lib/supabase';
 import { supabase } from '../lib/supabase';
 
@@ -12,6 +12,21 @@ interface ShiftNote {
   resolution_comment: string | null;
   created_at: string;
   resolved_at: string | null;
+}
+
+interface Correction {
+  id: string;
+  clock_log_id: string;
+  original_clock_in: string;
+  original_clock_out: string;
+  proposed_clock_in: string;
+  proposed_clock_out: string;
+  proposed_duration_minutes: number;
+  proposed_hours: number | null;
+  approval_status: 'pending' | 'approved' | 'rejected';
+  rejection_reason: string | null;
+  note: string | null;
+  created_at: string;
 }
 
 interface Report {
@@ -53,16 +68,157 @@ interface ReportDetail {
     total_hours: number;
     overtime_hours: number;
     status: string;
+    approved_at: string | null;
+    admin_approved_at: string | null;
     pay_period: { start_date: string; end_date: string };
   };
   shifts: Shift[];
   breaks: BreakLog[];
   notes: ShiftNote[];
+  corrections: Correction[];
 }
+
+const DAY_NAMES = ['Sat', 'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
 
 function parseLocalDate(dateStr: string): Date {
   const [y, m, d] = dateStr.split('-').map(Number);
   return new Date(y, m - 1, d);
+}
+
+function formatTimeEST(isoStr: string): string {
+  return new Date(isoStr).toLocaleTimeString('en-US', {
+    timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit',
+  });
+}
+
+function formatDecimalHours(mins: number): string {
+  if (mins <= 0) return '';
+  return (mins / 60).toFixed(2);
+}
+
+function formatDateShort(dateStr: string): string {
+  const d = parseLocalDate(dateStr);
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function getShiftDateKey(isoStr: string): string {
+  return new Date(isoStr).toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+}
+
+interface DayRow {
+  date: Date;
+  dateKey: string;
+  dayName: string;
+  shift: Shift | null;
+  lunchBreaks: BreakLog[];
+  regularBreaks: BreakLog[];
+  correction: Correction | null;
+  pendingCorrection: Correction | null;
+  notes: ShiftNote[];
+  netMinutes: number;
+  regMinutes: number;
+  otMinutes: number;
+}
+
+interface WeekBlock {
+  label: string;
+  dateRange: string;
+  days: DayRow[];
+  totalMinutes: number;
+  regMinutes: number;
+  otMinutes: number;
+}
+
+function buildWeekBlocks(detail: ReportDetail): WeekBlock[] {
+  const { report, shifts, breaks, corrections, notes } = detail;
+  const ppStart = parseLocalDate(report.pay_period.start_date);
+  const OT_THRESHOLD = 40 * 60;
+
+  const weeks: WeekBlock[] = [];
+  for (let w = 0; w < 2; w++) {
+    const weekStart = new Date(ppStart);
+    weekStart.setDate(ppStart.getDate() + w * 7);
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekStart.getDate() + 6);
+
+    const days: DayRow[] = [];
+    let weekNetTotal = 0;
+
+    for (let d = 0; d < 7; d++) {
+      const currentDate = new Date(weekStart);
+      currentDate.setDate(weekStart.getDate() + d);
+      const dateKey = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(currentDate.getDate()).padStart(2, '0')}`;
+
+      const dayShifts = shifts.filter(s => getShiftDateKey(s.clock_in_time) === dateKey);
+      const shift = dayShifts.length > 0 ? dayShifts[0] : null;
+
+      const dayBreaks = shift ? breaks.filter(b => b.clock_log_id === shift.id) : [];
+      const lunchBreaks = dayBreaks.filter(b => b.break_type === 'lunch');
+      const regularBreaks = dayBreaks.filter(b => b.break_type !== 'lunch');
+
+      const correction = shift ? (corrections.find(c => c.clock_log_id === shift.id && c.approval_status === 'approved') || null) : null;
+      const pendingCorrection = shift ? (corrections.find(c => c.clock_log_id === shift.id && c.approval_status === 'pending') || null) : null;
+      const shiftNotes = shift ? notes.filter(n => n.clock_log_id === shift.id) : [];
+
+      let netMinutes = 0;
+      if (shift) {
+        if (correction) {
+          netMinutes = correction.proposed_duration_minutes;
+        } else {
+          const lunchMin = dayBreaks.filter(b => b.break_type === 'lunch').reduce((s, b) => s + (b.duration_minutes || 0), 0);
+          netMinutes = Math.max(0, (shift.duration_minutes || 0) - lunchMin);
+        }
+      }
+
+      weekNetTotal += netMinutes;
+      days.push({
+        date: currentDate,
+        dateKey,
+        dayName: DAY_NAMES[d],
+        shift,
+        lunchBreaks,
+        regularBreaks,
+        correction,
+        pendingCorrection,
+        notes: shiftNotes,
+        netMinutes,
+        regMinutes: 0,
+        otMinutes: 0,
+      });
+    }
+
+    const otMinutes = Math.max(0, weekNetTotal - OT_THRESHOLD);
+    const regMinutes = weekNetTotal - otMinutes;
+
+    let remainingReg = regMinutes;
+    for (const day of days) {
+      if (day.netMinutes > 0) {
+        if (remainingReg >= day.netMinutes) {
+          day.regMinutes = day.netMinutes;
+          day.otMinutes = 0;
+          remainingReg -= day.netMinutes;
+        } else {
+          day.regMinutes = remainingReg;
+          day.otMinutes = day.netMinutes - remainingReg;
+          remainingReg = 0;
+        }
+      }
+    }
+
+    const fmtDateKey = (d: Date) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+    weeks.push({
+      label: `Week ${w + 1}`,
+      dateRange: `${formatDateShort(fmtDateKey(weekStart))} - ${formatDateShort(fmtDateKey(weekEnd))}`,
+      days,
+      totalMinutes: weekNetTotal,
+      regMinutes,
+      otMinutes,
+    });
+  }
+
+  return weeks;
 }
 
 export function TimecardReview() {
@@ -74,10 +230,18 @@ export function TimecardReview() {
   const [resolveNoteId, setResolveNoteId] = useState<string | null>(null);
   const [resolutionText, setResolutionText] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [view, setView] = useState<'pending' | 'all'>('pending');
+  const [view, setView] = useState<'pending' | 'approved'>('pending');
   const [generating, setGenerating] = useState(false);
+  const [approving, setApproving] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const pollRef = useRef<number | null>(null);
+
+  // Admin edit modal state
+  const [editingShift, setEditingShift] = useState<Shift | null>(null);
+  const [editClockIn, setEditClockIn] = useState('');
+  const [editClockOut, setEditClockOut] = useState('');
+  const [editNote, setEditNote] = useState('');
+  const [savingCorrection, setSavingCorrection] = useState(false);
 
   useEffect(() => {
     loadReports();
@@ -105,9 +269,7 @@ export function TimecardReview() {
     setLoadingDetail(true);
     const token = await getAuthToken();
     const result = await callTimecardFunction(`/detail/${reportId}`, { authToken: token });
-    if (result.success) {
-      setSelectedReport(result);
-    }
+    if (result.success) setSelectedReport(result);
     setLoadingDetail(false);
   }
 
@@ -121,81 +283,125 @@ export function TimecardReview() {
     setResolveNoteId(null);
     setResolutionText('');
     setSubmitting(false);
-    if (selectedReport) {
-      await loadDetail(selectedReport.report.id);
-    }
+    if (selectedReport) await loadDetail(selectedReport.report.id);
     await loadReports();
   }
 
   async function handleGenerate() {
     setGenerating(true);
     const token = await getAuthToken();
-    const result = await callTimecardFunction('/generate', {
-      body: {},
-      authToken: token,
-    });
+    const result = await callTimecardFunction('/generate', { body: {}, authToken: token });
     setGenerating(false);
+    setToast(result.success ? `Sent ${result.reports_generated} timecard(s) for approval` : (result.message || 'Failed'));
+    setTimeout(() => setToast(null), 4000);
+    if (result.success) await loadReports();
+  }
+
+  async function handleAdminApprove(reportId: string) {
+    setApproving(true);
+    const token = await getAuthToken();
+    const result = await callTimecardFunction('/admin-approve', { body: { report_id: reportId }, authToken: token });
+    setApproving(false);
     if (result.success) {
-      setToast(`Generated ${result.reports_generated} report(s)`);
-      setTimeout(() => setToast(null), 4000);
+      setToast('Approved! Final hours email sent to employee.');
+      await loadDetail(reportId);
       await loadReports();
     } else {
-      setToast(result.message || 'Failed to generate');
+      setToast(result.message || 'Failed to approve');
+    }
+    setTimeout(() => setToast(null), 5000);
+  }
+
+  function toESTInputTime(isoStr: string): string {
+    const d = new Date(isoStr);
+    const est = new Date(d.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+    return `${est.getHours().toString().padStart(2, '0')}:${est.getMinutes().toString().padStart(2, '0')}`;
+  }
+
+  function toISOFromESTTime(dateStr: string, timeStr: string): string {
+    const [hours, minutes] = timeStr.split(':').map(Number);
+    const estDate = new Date(dateStr + 'T00:00:00');
+    estDate.setHours(hours, minutes, 0, 0);
+    const utcDate = new Date(estDate.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+    const diff = estDate.getTime() - utcDate.getTime();
+    return new Date(estDate.getTime() + diff).toISOString();
+  }
+
+  function openAdminEditModal(shift: Shift) {
+    setEditingShift(shift);
+    const existingCorr = selectedReport?.corrections.find(c => c.clock_log_id === shift.id);
+    if (existingCorr) {
+      setEditClockIn(toESTInputTime(existingCorr.proposed_clock_in));
+      setEditClockOut(toESTInputTime(existingCorr.proposed_clock_out));
+      setEditNote(existingCorr.note || '');
+    } else {
+      setEditClockIn(toESTInputTime(shift.clock_in_time));
+      setEditClockOut(shift.clock_out_time ? toESTInputTime(shift.clock_out_time) : '');
+      setEditNote('');
+    }
+  }
+
+  async function handleApproveCorrection(correctionId: string) {
+    const token = await getAuthToken();
+    const result = await callTimecardFunction('/approve-correction', {
+      body: { correction_id: correctionId },
+      authToken: token,
+    });
+    if (result.success) {
+      setToast('Correction approved');
+      if (selectedReport) await loadDetail(selectedReport.report.id);
+      await loadReports();
+    } else {
+      setToast(result.message || 'Failed to approve correction');
+    }
+    setTimeout(() => setToast(null), 4000);
+  }
+
+  async function handleRejectCorrection(correctionId: string) {
+    const reason = prompt('Reason for rejection (optional):');
+    const token = await getAuthToken();
+    const result = await callTimecardFunction('/reject-correction', {
+      body: { correction_id: correctionId, reason: reason || undefined },
+      authToken: token,
+    });
+    if (result.success) {
+      setToast('Correction rejected');
+      if (selectedReport) await loadDetail(selectedReport.report.id);
+      await loadReports();
+    } else {
+      setToast(result.message || 'Failed to reject correction');
+    }
+    setTimeout(() => setToast(null), 4000);
+  }
+
+  async function handleAdminSaveCorrection() {
+    if (!editingShift || !editClockIn || !editClockOut || !selectedReport) return;
+    setSavingCorrection(true);
+    const token = await getAuthToken();
+    const shiftDate = getShiftDateKey(editingShift.clock_in_time);
+    const result = await callTimecardFunction('/admin-corrections', {
+      body: {
+        report_id: selectedReport.report.id,
+        clock_log_id: editingShift.id,
+        proposed_clock_in: toISOFromESTTime(shiftDate, editClockIn),
+        proposed_clock_out: toISOFromESTTime(shiftDate, editClockOut),
+        note: editNote.trim() || null,
+      },
+      authToken: token,
+    });
+    if (result.success) {
+      setEditingShift(null);
+      await loadDetail(selectedReport.report.id);
+    } else {
+      setToast(result.message || 'Failed to save');
       setTimeout(() => setToast(null), 4000);
     }
+    setSavingCorrection(false);
   }
 
   function formatDate(dateStr: string) {
     const [y, m, d] = dateStr.split('-').map(Number);
     return new Date(y, m - 1, d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  }
-
-  function formatTime(isoStr: string) {
-    return new Date(isoStr).toLocaleTimeString('en-US', {
-      timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit',
-    });
-  }
-
-  function formatShiftDate(isoStr: string) {
-    return new Date(isoStr).toLocaleDateString('en-US', {
-      timeZone: 'America/New_York', weekday: 'short', month: 'short', day: 'numeric',
-    });
-  }
-
-  function buildWeeklyBreakdown(shifts: Shift[], breaks: BreakLog[], startDate: string, endDate: string) {
-    const ppStart = parseLocalDate(startDate);
-    const week1End = new Date(ppStart);
-    week1End.setDate(ppStart.getDate() + 6);
-    const week2Start = new Date(ppStart);
-    week2Start.setDate(ppStart.getDate() + 7);
-    const ppEnd = parseLocalDate(endDate);
-
-    const weeks = [
-      { label: 'Week 1', start: ppStart, end: week1End },
-      { label: 'Week 2', start: week2Start, end: ppEnd },
-    ];
-
-    return weeks.map(week => {
-      const weekShifts = shifts.filter(s => {
-        const shiftDate = new Date(new Date(s.clock_in_time).toLocaleString('en-US', { timeZone: 'America/New_York' }));
-        shiftDate.setHours(0, 0, 0, 0);
-        return shiftDate >= week.start && shiftDate <= week.end;
-      });
-
-      const shiftsWithBreaks = weekShifts.map(s => {
-        const shiftBreaks = breaks.filter(b => b.clock_log_id === s.id);
-        const breakMin = shiftBreaks.reduce((sum, b) => sum + (b.duration_minutes || 0), 0);
-        const netMin = Math.max(0, (s.duration_minutes || 0) - breakMin);
-        return { ...s, breakMinutes: breakMin, netMinutes: netMin, breaks: shiftBreaks };
-      });
-
-      const totalMin = shiftsWithBreaks.reduce((s, sh) => s + (sh.duration_minutes || 0), 0);
-      const breakMin = shiftsWithBreaks.reduce((s, sh) => s + sh.breakMinutes, 0);
-      const netMin = shiftsWithBreaks.reduce((s, sh) => s + sh.netMinutes, 0);
-      const otMin = Math.max(0, netMin - 40 * 60);
-
-      return { ...week, shifts: shiftsWithBreaks, totalMin, breakMin, netMin, otMin };
-    });
   }
 
   if (loading) {
@@ -208,15 +414,15 @@ export function TimecardReview() {
 
   // === DETAIL VIEW ===
   if (selectedReport) {
-    const { report, shifts, breaks, notes } = selectedReport;
+    const { report, notes, corrections } = selectedReport;
     const openNotes = notes.filter(n => n.status !== 'resolved');
     const resolvedNotes = notes.filter(n => n.status === 'resolved');
-    const weeklyData = buildWeeklyBreakdown(shifts, breaks, report.pay_period.start_date, report.pay_period.end_date);
-
-    const liveNetHours = weeklyData.reduce((s, w) => s + w.netMin, 0) / 60;
-    const liveBreakHours = weeklyData.reduce((s, w) => s + w.breakMin, 0) / 60;
-    const liveOTHours = weeklyData.reduce((s, w) => s + w.otMin, 0) / 60;
-    const hasOpenShift = shifts.some(s => !s.clock_out_time);
+    const weekBlocks = buildWeekBlocks(selectedReport);
+    const periodTotal = weekBlocks.reduce((s, w) => s + w.totalMinutes, 0);
+    const periodReg = weekBlocks.reduce((s, w) => s + w.regMinutes, 0);
+    const periodOT = weekBlocks.reduce((s, w) => s + w.otMinutes, 0);
+    const hasOpenShift = selectedReport.shifts.some(s => !s.clock_out_time);
+    const canEdit = report.status !== 'approved';
 
     return (
       <div className="space-y-6">
@@ -230,43 +436,47 @@ export function TimecardReview() {
           </button>
           <div className="flex-1">
             <h2 className="text-lg font-bold text-moja-blue">{report.staff_name}</h2>
-            <p className="text-xs text-gray-400">{report.staff_email}</p>
+            <p className="text-xs text-gray-400">
+              {report.staff_email} &middot; {formatDate(report.pay_period.start_date)} - {formatDate(report.pay_period.end_date)}
+            </p>
           </div>
           <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold ${
             report.status === 'approved' ? 'bg-green-100 text-green-700' :
+            report.status === 'employee_approved' ? 'bg-emerald-100 text-emerald-700' :
             report.status === 'has_notes' ? 'bg-amber-100 text-amber-700' :
             'bg-blue-100 text-blue-700'
           }`}>
-            {report.status === 'approved' ? <><CheckCircle className="w-3.5 h-3.5" /> Approved</> :
+            {report.status === 'approved' ? <><CheckCircle className="w-3.5 h-3.5" /> Fully Approved</> :
+             report.status === 'employee_approved' ? <><CheckCircle className="w-3.5 h-3.5" /> Employee Approved</> :
              report.status === 'has_notes' ? <><MessageSquare className="w-3.5 h-3.5" /> Has Notes</> :
              <><Clock className="w-3.5 h-3.5" /> Pending</>}
           </span>
         </div>
 
-        {/* Live Stats */}
+        {/* Summary Stats */}
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
           <div className="bg-white rounded-xl border border-gray-100 p-4">
-            <p className="text-[11px] text-gray-400 font-semibold uppercase tracking-wide">Period</p>
-            <p className="text-sm font-bold text-moja-blue mt-1">
-              {formatDate(report.pay_period.start_date)} - {formatDate(report.pay_period.end_date)}
-            </p>
-          </div>
-          <div className="bg-white rounded-xl border border-gray-100 p-4">
             <p className="text-[11px] text-gray-400 font-semibold uppercase tracking-wide">Shifts</p>
-            <p className="text-2xl font-bold text-moja-blue mt-1">{shifts.length}</p>
+            <p className="text-2xl font-bold text-moja-blue mt-1">{selectedReport.shifts.length}</p>
           </div>
           <div className="bg-white rounded-xl border border-gray-100 p-4">
             <p className="text-[11px] text-gray-400 font-semibold uppercase tracking-wide">Net Hours</p>
-            <p className="text-2xl font-bold text-moja-blue mt-1">{liveNetHours.toFixed(1)}</p>
+            <p className="text-2xl font-bold text-moja-blue mt-1">{formatDecimalHours(periodTotal)}</p>
           </div>
           <div className="bg-white rounded-xl border border-gray-100 p-4">
-            <p className="text-[11px] text-gray-400 font-semibold uppercase tracking-wide">Breaks</p>
-            <p className="text-2xl font-bold text-gray-400 mt-1">{liveBreakHours.toFixed(1)}</p>
+            <p className="text-[11px] text-gray-400 font-semibold uppercase tracking-wide">Regular</p>
+            <p className="text-2xl font-bold text-gray-700 mt-1">{formatDecimalHours(periodReg)}</p>
           </div>
           <div className="bg-white rounded-xl border border-gray-100 p-4">
             <p className="text-[11px] text-orange-500 font-semibold uppercase tracking-wide">Overtime</p>
-            <p className={`text-2xl font-bold mt-1 ${liveOTHours > 0 ? 'text-orange-500' : 'text-gray-300'}`}>
-              {liveOTHours.toFixed(1)}
+            <p className={`text-2xl font-bold mt-1 ${periodOT > 0 ? 'text-orange-500' : 'text-gray-300'}`}>
+              {formatDecimalHours(periodOT) || '0.00'}
+            </p>
+          </div>
+          <div className="bg-white rounded-xl border border-gray-100 p-4">
+            <p className="text-[11px] text-blue-600 font-semibold uppercase tracking-wide">Corrections</p>
+            <p className={`text-2xl font-bold mt-1 ${corrections.length > 0 ? 'text-blue-600' : 'text-gray-300'}`}>
+              {corrections.length}
             </p>
           </div>
         </div>
@@ -277,22 +487,55 @@ export function TimecardReview() {
           </div>
         )}
 
-        {/* Open Notes - Priority view */}
+        {/* Timecard Table with inline notes */}
+        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs sm:text-sm min-w-[750px]">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-200">
+                  <th className="text-left px-3 py-2.5 font-bold text-gray-600 w-14">Day</th>
+                  <th className="text-left px-2 py-2.5 font-bold text-gray-600">Start</th>
+                  <th className="text-left px-2 py-2.5 font-bold text-green-700 text-[11px]">Break Out</th>
+                  <th className="text-left px-2 py-2.5 font-bold text-green-700 text-[11px]">Break In</th>
+                  <th className="text-left px-2 py-2.5 font-bold text-gray-600 text-[11px]">Lunch Out</th>
+                  <th className="text-left px-2 py-2.5 font-bold text-gray-600 text-[11px]">Lunch In</th>
+                  <th className="text-left px-2 py-2.5 font-bold text-gray-600">End</th>
+                  <th className="text-center px-2 py-2.5 font-bold text-gray-600">Vac/Sick</th>
+                  <th className="text-right px-2 py-2.5 font-bold text-gray-600">Reg</th>
+                  <th className="text-right px-2 py-2.5 font-bold text-orange-600">OT</th>
+                  <th className="text-right px-3 py-2.5 font-bold text-moja-blue bg-blue-50">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {weekBlocks.map((week, wi) => (
+                  <AdminWeekSection key={wi} week={week} canEdit={canEdit} onEditShift={openAdminEditModal} onApproveCorrection={handleApproveCorrection} onRejectCorrection={handleRejectCorrection} />
+                ))}
+                <tr className="bg-gray-100 border-t-2 border-gray-300 font-bold">
+                  <td colSpan={8} className="px-3 py-2.5 text-gray-700">Period Total</td>
+                  <td className="px-2 py-2.5 text-right text-gray-700">{formatDecimalHours(periodReg)}</td>
+                  <td className="px-2 py-2.5 text-right text-orange-600">{formatDecimalHours(periodOT)}</td>
+                  <td className="px-3 py-2.5 text-right text-moja-blue bg-blue-50">{formatDecimalHours(periodTotal)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Open Notes - Action required */}
         {openNotes.length > 0 && (
           <div className="space-y-3">
             <h3 className="text-sm font-bold text-amber-700 uppercase tracking-wide flex items-center gap-2">
               <AlertTriangle className="w-4 h-4" /> Open Notes ({openNotes.length})
             </h3>
             {openNotes.map(note => {
-              const relatedShift = shifts.find(s => s.id === note.clock_log_id);
+              const relatedShift = selectedReport.shifts.find(s => s.id === note.clock_log_id);
               return (
                 <div key={note.id} className="bg-white rounded-xl border-2 border-amber-200 p-4 space-y-3">
                   <div>
                     {relatedShift ? (
                       <p className="text-xs text-gray-400 font-semibold mb-1">
-                        Shift: {formatShiftDate(relatedShift.clock_in_time)} &middot;
-                        {formatTime(relatedShift.clock_in_time)} - {relatedShift.clock_out_time ? formatTime(relatedShift.clock_out_time) : 'open'} &middot;
-                        {relatedShift.duration_minutes ? ` ${(relatedShift.duration_minutes / 60).toFixed(1)}h` : ''}
+                        Shift: {new Date(relatedShift.clock_in_time).toLocaleDateString('en-US', { timeZone: 'America/New_York', weekday: 'short', month: 'short', day: 'numeric' })} &middot;
+                        {formatTimeEST(relatedShift.clock_in_time)} - {relatedShift.clock_out_time ? formatTimeEST(relatedShift.clock_out_time) : 'open'}
                       </p>
                     ) : (
                       <p className="text-xs text-gray-400 font-semibold mb-1">General note</p>
@@ -302,7 +545,6 @@ export function TimecardReview() {
                       {new Date(note.created_at).toLocaleString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
                     </p>
                   </div>
-
                   {resolveNoteId === note.id ? (
                     <div className="bg-gray-50 rounded-lg p-3 space-y-2">
                       <input
@@ -327,12 +569,7 @@ export function TimecardReview() {
                         >
                           <XCircle className="w-3.5 h-3.5" /> Dismiss
                         </button>
-                        <button
-                          onClick={() => setResolveNoteId(null)}
-                          className="px-3 py-2 text-gray-400 text-xs font-bold hover:text-gray-600"
-                        >
-                          Cancel
-                        </button>
+                        <button onClick={() => setResolveNoteId(null)} className="px-3 py-2 text-gray-400 text-xs font-bold hover:text-gray-600">Cancel</button>
                       </div>
                     </div>
                   ) : (
@@ -358,99 +595,164 @@ export function TimecardReview() {
             {resolvedNotes.map(note => (
               <div key={note.id} className="bg-green-50 rounded-xl border border-green-100 p-4">
                 <p className="text-sm text-gray-700">{note.body}</p>
-                {note.resolution_comment && (
-                  <p className="text-xs text-green-700 font-medium mt-1.5">Response: {note.resolution_comment}</p>
-                )}
-                <p className="text-xs text-gray-400 mt-1">
-                  Resolved {note.resolved_at ? new Date(note.resolved_at).toLocaleString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : ''}
-                </p>
+                {note.resolution_comment && <p className="text-xs text-green-700 font-medium mt-1.5">Response: {note.resolution_comment}</p>}
               </div>
             ))}
           </div>
         )}
 
-        {/* Weekly Breakdown */}
-        {weeklyData.map((week, idx) => (
-          <div key={idx} className="space-y-3">
-            <div className="flex items-center justify-between px-1">
-              <h3 className="text-sm font-bold text-moja-blue/70 uppercase tracking-wide">
-                {week.label}
-                <span className="ml-2 text-xs font-medium text-gray-400 normal-case">
-                  {formatDate(week.start.toISOString().split('T')[0])} - {formatDate(week.end.toISOString().split('T')[0])}
-                </span>
-              </h3>
-              <div className="flex items-center gap-3 text-xs font-semibold">
-                <span className="text-moja-blue">{(week.netMin / 60).toFixed(1)}h net</span>
-                {week.otMin > 0 && (
-                  <span className="text-orange-500">+{(week.otMin / 60).toFixed(1)} OT</span>
-                )}
+        {/* Admin Approval Section */}
+        {report.status === 'approved' ? (
+          <div className="bg-green-50 border-2 border-green-200 rounded-xl p-5 text-center">
+            <CheckCircle className="w-8 h-8 text-green-500 mx-auto mb-2" />
+            <p className="font-bold text-green-800">Fully approved</p>
+            {report.admin_approved_at && (
+              <p className="text-xs text-green-600 mt-1">
+                Admin approved on {new Date(report.admin_approved_at).toLocaleDateString('en-US', {
+                  timeZone: 'America/New_York', weekday: 'long', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit'
+                })}
+              </p>
+            )}
+            <p className="text-xs text-green-600 mt-1">Final hours email was sent to {report.staff_email}.</p>
+          </div>
+        ) : (
+          <div className="bg-white rounded-2xl border-2 border-green-200 p-6 text-center shadow-sm">
+            {report.status === 'employee_approved' && (
+              <p className="text-xs font-semibold text-blue-600 mb-3 bg-blue-50 rounded-lg px-3 py-1.5 inline-block">
+                Employee approved on {report.approved_at ? new Date(report.approved_at).toLocaleDateString('en-US', {
+                  timeZone: 'America/New_York', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'
+                }) : 'N/A'}
+              </p>
+            )}
+            <CheckCircle className="w-10 h-10 text-green-500 mx-auto mb-3" />
+            <p className="font-bold text-gray-800 mb-1">Approve & Send Final Hours</p>
+            <p className="text-sm text-gray-500 mb-4">
+              This will finalize the timecard ({(periodTotal / 60).toFixed(1)}h) and email the confirmed hours to {report.staff_name.split(' ')[0]}.
+            </p>
+            <button
+              onClick={() => handleAdminApprove(report.id)}
+              disabled={approving}
+              className="inline-flex items-center gap-2 px-8 py-3 bg-green-600 text-white font-bold rounded-xl hover:bg-green-700 active:scale-[0.98] transition-all disabled:opacity-50 shadow-lg shadow-green-200"
+            >
+              {approving ? (
+                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <CheckCircle className="w-5 h-5" />
+              )}
+              Approve & Send Email
+            </button>
+          </div>
+        )}
+
+        {/* Admin Edit Modal */}
+        {editingShift && (
+          <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setEditingShift(null)}>
+            <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden" onClick={e => e.stopPropagation()}>
+              <div className="bg-moja-blue p-5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-white font-bold text-lg">Override Shift Hours</h3>
+                    <p className="text-white/60 text-sm">
+                      {new Date(editingShift.clock_in_time).toLocaleDateString('en-US', {
+                        timeZone: 'America/New_York', weekday: 'long', month: 'short', day: 'numeric'
+                      })}
+                    </p>
+                  </div>
+                  <button onClick={() => setEditingShift(null)} className="p-2 text-white/50 hover:text-white rounded-lg transition-colors">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+              <div className="p-5 space-y-4">
+                <div className="bg-gray-50 rounded-lg p-3">
+                  <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Original Times</p>
+                  <p className="text-sm font-medium text-gray-700">
+                    {formatTimeEST(editingShift.clock_in_time)} - {editingShift.clock_out_time ? formatTimeEST(editingShift.clock_out_time) : 'open'}
+                    {editingShift.duration_minutes && (
+                      <span className="text-gray-400 ml-2">({(editingShift.duration_minutes / 60).toFixed(2)}h)</span>
+                    )}
+                  </p>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1 block">New Clock In</label>
+                    <input
+                      type="time"
+                      value={editClockIn}
+                      onChange={e => setEditClockIn(e.target.value)}
+                      className="w-full px-3 py-2.5 text-sm border-2 border-gray-200 rounded-lg focus:outline-none focus:border-moja-blue"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1 block">New Clock Out</label>
+                    <input
+                      type="time"
+                      value={editClockOut}
+                      onChange={e => setEditClockOut(e.target.value)}
+                      className="w-full px-3 py-2.5 text-sm border-2 border-gray-200 rounded-lg focus:outline-none focus:border-moja-blue"
+                    />
+                  </div>
+                </div>
+                {editClockIn && editClockOut && (() => {
+                  const [hIn, mIn] = editClockIn.split(':').map(Number);
+                  const [hOut, mOut] = editClockOut.split(':').map(Number);
+                  const newMins = Math.max(0, (hOut * 60 + mOut) - (hIn * 60 + mIn));
+                  const oldMins = editingShift.duration_minutes || 0;
+                  const diff = newMins - oldMins;
+                  const newPeriodTotal = periodTotal + diff;
+                  return (
+                    <div className="bg-blue-50 rounded-lg p-3 space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-blue-600 font-medium">Updated shift hours:</span>
+                        <span className="text-sm font-bold text-blue-700">{(newMins / 60).toFixed(2)}h</span>
+                      </div>
+                      <div className="flex items-center justify-between border-t border-blue-100 pt-1.5">
+                        <span className="text-xs text-blue-600 font-medium">New period total:</span>
+                        <span className="text-sm font-bold text-blue-800">
+                          {(newPeriodTotal / 60).toFixed(2)}h
+                          {diff !== 0 && (
+                            <span className={`ml-1.5 text-[11px] ${diff > 0 ? 'text-green-600' : 'text-red-500'}`}>
+                              ({diff > 0 ? '+' : ''}{(diff / 60).toFixed(2)}h)
+                            </span>
+                          )}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })()}
+                <div>
+                  <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1 block">Note (optional)</label>
+                  <textarea
+                    value={editNote}
+                    onChange={e => setEditNote(e.target.value)}
+                    placeholder="e.g., Adjusted per employee request"
+                    rows={2}
+                    className="w-full px-3 py-2.5 text-sm border-2 border-gray-200 rounded-lg focus:outline-none focus:border-moja-blue resize-none"
+                  />
+                </div>
+                <div className="flex gap-2 pt-2">
+                  <button
+                    onClick={handleAdminSaveCorrection}
+                    disabled={savingCorrection || !editClockIn || !editClockOut}
+                    className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-moja-blue text-white font-bold rounded-xl hover:bg-moja-blue/90 disabled:opacity-40 transition-all"
+                  >
+                    {savingCorrection ? (
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <><Save className="w-4 h-4" /> Save Override</>
+                    )}
+                  </button>
+                  <button
+                    onClick={() => setEditingShift(null)}
+                    className="px-4 py-3 text-gray-500 font-bold rounded-xl hover:bg-gray-100 transition-all"
+                  >
+                    Cancel
+                  </button>
+                </div>
               </div>
             </div>
-
-            <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-gray-50 border-b border-gray-100">
-                    <th className="text-left px-4 py-2.5 font-semibold text-gray-500 text-xs">Date</th>
-                    <th className="text-left px-4 py-2.5 font-semibold text-gray-500 text-xs">In</th>
-                    <th className="text-left px-4 py-2.5 font-semibold text-gray-500 text-xs">Out</th>
-                    <th className="text-right px-4 py-2.5 font-semibold text-gray-500 text-xs">Breaks</th>
-                    <th className="text-right px-4 py-2.5 font-semibold text-gray-500 text-xs">Net Hrs</th>
-                    <th className="text-center px-4 py-2.5 font-semibold text-gray-500 text-xs">Notes</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {week.shifts.length === 0 ? (
-                    <tr>
-                      <td colSpan={6} className="px-4 py-4 text-center text-gray-400 text-xs">No shifts this week</td>
-                    </tr>
-                  ) : (
-                    week.shifts.map(shift => {
-                      const shiftNotes = notes.filter(n => n.clock_log_id === shift.id);
-                      const isOpen = !shift.clock_out_time;
-                      return (
-                        <tr key={shift.id} className={`border-b border-gray-50 last:border-0 ${isOpen ? 'bg-green-50/50' : ''}`}>
-                          <td className="px-4 py-3 font-medium text-gray-800 text-xs whitespace-nowrap">
-                            {formatShiftDate(shift.clock_in_time)}
-                          </td>
-                          <td className="px-4 py-3 text-gray-600 text-xs">{formatTime(shift.clock_in_time)}</td>
-                          <td className="px-4 py-3 text-xs">
-                            {isOpen ? (
-                              <span className="inline-flex items-center gap-1 text-green-600 font-semibold">
-                                <Radio className="w-3 h-3 animate-pulse" /> Active
-                              </span>
-                            ) : (
-                              <span className="text-gray-600">{formatTime(shift.clock_out_time!)}</span>
-                            )}
-                          </td>
-                          <td className="px-4 py-3 text-right text-xs">
-                            {shift.breakMinutes > 0 ? (
-                              <span className="inline-flex items-center gap-1 text-gray-400">
-                                <Coffee className="w-3 h-3" /> {shift.breakMinutes}m
-                              </span>
-                            ) : (
-                              <span className="text-gray-300">-</span>
-                            )}
-                          </td>
-                          <td className="px-4 py-3 text-right font-bold text-moja-blue text-xs">
-                            {shift.netMinutes ? (shift.netMinutes / 60).toFixed(1) : '-'}
-                          </td>
-                          <td className="px-4 py-3 text-center">
-                            {shiftNotes.length > 0 && (
-                              <span className="inline-flex items-center gap-0.5 text-xs font-bold text-amber-600">
-                                <MessageSquare className="w-3 h-3" /> {shiftNotes.length}
-                              </span>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
           </div>
-        ))}
+        )}
       </div>
     );
   }
@@ -476,11 +778,7 @@ export function TimecardReview() {
           )}
         </div>
         <div className="flex items-center gap-3">
-          <button
-            onClick={() => loadReports()}
-            className="p-2 text-gray-400 hover:text-moja-blue rounded-lg transition-colors"
-            title="Refresh"
-          >
+          <button onClick={() => loadReports()} className="p-2 text-gray-400 hover:text-moja-blue rounded-lg transition-colors" title="Refresh">
             <RefreshCw className="w-4 h-4" />
           </button>
           <button
@@ -489,12 +787,11 @@ export function TimecardReview() {
             className="inline-flex items-center gap-2 px-4 py-2 bg-moja-orange text-white text-sm font-bold rounded-lg hover:bg-moja-orange/90 active:scale-[0.98] transition-all disabled:opacity-50"
           >
             {generating ? <RefreshCw className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
-            Generate Reports
+            Send Manual Timecards
           </button>
         </div>
       </div>
 
-      {/* Tab Toggle */}
       <div className="flex gap-1 bg-gray-100 rounded-lg p-1 w-fit">
         <button
           onClick={() => setView('pending')}
@@ -505,12 +802,12 @@ export function TimecardReview() {
           Needs Review ({reports.length})
         </button>
         <button
-          onClick={() => setView('all')}
+          onClick={() => setView('approved')}
           className={`px-4 py-2 text-sm font-bold rounded-md transition-all ${
-            view === 'all' ? 'bg-white text-moja-blue shadow-sm' : 'text-gray-500 hover:text-gray-700'
+            view === 'approved' ? 'bg-white text-moja-blue shadow-sm' : 'text-gray-500 hover:text-gray-700'
           }`}
         >
-          All Reports
+          Approved ({allReports.length})
         </button>
       </div>
 
@@ -518,10 +815,10 @@ export function TimecardReview() {
         <div className="bg-white rounded-xl border border-gray-100 p-12 text-center">
           <CheckCircle className="w-12 h-12 text-green-300 mx-auto mb-3" />
           <p className="text-lg font-bold text-gray-400">
-            {view === 'pending' ? 'All caught up!' : 'No reports generated yet'}
+            {view === 'pending' ? 'All caught up!' : 'No approved timecards yet'}
           </p>
           <p className="text-sm text-gray-300 mt-1">
-            {view === 'pending' ? 'No timecards need your attention right now.' : 'Reports are generated every other Friday at 3 PM EST.'}
+            {view === 'pending' ? 'No timecards need your attention right now.' : 'Timecards will appear here after admin approval.'}
           </p>
         </div>
       ) : (
@@ -537,17 +834,16 @@ export function TimecardReview() {
                 className="w-full text-left bg-white rounded-xl border border-gray-100 p-4 sm:p-5 hover:border-moja-blue/30 hover:shadow-md transition-all group"
               >
                 <div className="flex items-center gap-4">
-                  {/* Status Icon */}
                   <div className={`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 ${
                     report.status === 'has_notes' ? 'bg-amber-100' :
-                    report.status === 'approved' ? 'bg-green-100' : 'bg-blue-100'
+                    report.status === 'approved' ? 'bg-green-100' :
+                    report.status === 'employee_approved' ? 'bg-emerald-100' : 'bg-blue-100'
                   }`}>
                     {report.status === 'has_notes' ? <MessageSquare className="w-5 h-5 text-amber-600" /> :
                      report.status === 'approved' ? <CheckCircle className="w-5 h-5 text-green-600" /> :
+                     report.status === 'employee_approved' ? <CheckCircle className="w-5 h-5 text-emerald-600" /> :
                      <Clock className="w-5 h-5 text-blue-600" />}
                   </div>
-
-                  {/* Name + Period */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <p className="font-bold text-gray-800 truncate">{report.staff?.name || 'Unknown'}</p>
@@ -559,26 +855,17 @@ export function TimecardReview() {
                     </div>
                     <p className="text-xs text-gray-400 font-medium mt-0.5">
                       {report.pay_periods ? `${formatDate(report.pay_periods.start_date)} - ${formatDate(report.pay_periods.end_date)}` : ''}
-                      {report.shift_count !== undefined && (
-                        <span className="ml-2 text-gray-300">{report.shift_count} shifts</span>
-                      )}
+                      {report.shift_count !== undefined && <span className="ml-2 text-gray-300">{report.shift_count} shifts</span>}
                     </p>
                   </div>
-
-                  {/* Hours Data */}
                   <div className="text-right flex-shrink-0">
                     <p className="text-lg font-bold text-moja-blue">{liveHours.toFixed(1)}h</p>
-                    <div className="flex items-center gap-2 justify-end">
-                      {report.overtime_hours > 0 && (
-                        <span className="text-xs text-orange-500 font-semibold">+{report.overtime_hours.toFixed(1)} OT</span>
-                      )}
-                    </div>
+                    {report.overtime_hours > 0 && (
+                      <span className="text-xs text-orange-500 font-semibold">+{report.overtime_hours.toFixed(1)} OT</span>
+                    )}
                   </div>
-
                   <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-moja-blue transition-colors flex-shrink-0" />
                 </div>
-
-                {/* Open notes indicator */}
                 {openNoteCount > 0 && (
                   <div className="mt-3 pt-3 border-t border-gray-50 flex items-center gap-2 text-xs text-amber-600 font-semibold">
                     <MessageSquare className="w-3.5 h-3.5" />
@@ -597,5 +884,158 @@ export function TimecardReview() {
         </div>
       )}
     </div>
+  );
+}
+
+function AdminWeekSection({ week, canEdit, onEditShift, onApproveCorrection, onRejectCorrection }: {
+  week: WeekBlock;
+  canEdit: boolean;
+  onEditShift: (shift: Shift) => void;
+  onApproveCorrection?: (correctionId: string) => void;
+  onRejectCorrection?: (correctionId: string) => void;
+}) {
+  return (
+    <>
+      <tr className="bg-gray-100/70 border-t border-gray-200">
+        <td colSpan={11} className="px-3 py-2 font-bold text-gray-600 text-xs">
+          {week.label} &middot; <span className="font-medium text-gray-400">{week.dateRange}</span>
+        </td>
+      </tr>
+      {week.days.map((day, di) => {
+        const hasCorrection = !!day.correction;
+        const hasPending = !!day.pendingCorrection;
+        const hasNotes = day.notes.length > 0 || !!day.correction?.note || hasPending;
+        const isWeekend = di < 2;
+        return (
+          <React.Fragment key={day.dateKey}>
+            <tr
+              className={`border-b ${hasNotes ? 'border-b-0' : 'border-gray-100'} last:border-0 transition-colors ${
+                hasPending ? 'bg-amber-50/60' :
+                hasCorrection ? 'bg-blue-50/60' : isWeekend ? 'bg-gray-50/30' : 'hover:bg-gray-50/50'
+              } ${canEdit && day.shift ? 'cursor-pointer' : ''}`}
+              onClick={() => { if (canEdit && day.shift) onEditShift(day.shift); }}
+            >
+              <td className="px-3 py-2.5 font-bold text-gray-700">{day.dayName}</td>
+              <td className="px-2 py-2.5 whitespace-nowrap">
+                {day.shift ? (
+                  <AdminCellValue
+                    original={formatTimeEST(day.shift.clock_in_time)}
+                    proposed={hasCorrection ? formatTimeEST(day.correction!.proposed_clock_in) : undefined}
+                    changed={hasCorrection && day.correction!.proposed_clock_in !== day.correction!.original_clock_in}
+                  />
+                ) : ''}
+              </td>
+              <td className="px-2 py-2.5 text-gray-500 whitespace-nowrap text-[11px]">
+                {day.regularBreaks.length > 0 ? formatTimeEST(day.regularBreaks[0].break_start) : ''}
+              </td>
+              <td className="px-2 py-2.5 text-gray-500 whitespace-nowrap text-[11px]">
+                {day.regularBreaks.length > 0 && day.regularBreaks[0].break_end ? formatTimeEST(day.regularBreaks[0].break_end) : ''}
+              </td>
+              <td className="px-2 py-2.5 text-gray-500 whitespace-nowrap text-[11px]">
+                {day.lunchBreaks.length > 0 ? formatTimeEST(day.lunchBreaks[0].break_start) : ''}
+              </td>
+              <td className="px-2 py-2.5 text-gray-500 whitespace-nowrap text-[11px]">
+                {day.lunchBreaks.length > 0 && day.lunchBreaks[0].break_end ? formatTimeEST(day.lunchBreaks[0].break_end) : ''}
+              </td>
+              <td className="px-2 py-2.5 whitespace-nowrap">
+                {day.shift?.clock_out_time ? (
+                  <AdminCellValue
+                    original={formatTimeEST(day.shift.clock_out_time)}
+                    proposed={hasCorrection ? formatTimeEST(day.correction!.proposed_clock_out) : undefined}
+                    changed={hasCorrection && day.correction!.proposed_clock_out !== day.correction!.original_clock_out}
+                  />
+                ) : day.shift ? (
+                  <span className="inline-flex items-center gap-1 text-green-600 text-[10px] font-bold">
+                    <Radio className="w-3 h-3 animate-pulse" /> ACTIVE
+                  </span>
+                ) : ''}
+              </td>
+              <td className="px-2 py-2.5 text-center text-gray-400">-</td>
+              <td className="px-2 py-2.5 text-right font-medium text-gray-700">
+                {day.regMinutes > 0 ? formatDecimalHours(day.regMinutes) : ''}
+              </td>
+              <td className="px-2 py-2.5 text-right font-medium text-orange-600">
+                {day.otMinutes > 0 ? formatDecimalHours(day.otMinutes) : ''}
+              </td>
+              <td className={`px-3 py-2.5 text-right font-bold bg-blue-50/50 ${hasCorrection ? 'text-blue-700' : 'text-moja-blue'}`}>
+                {day.netMinutes > 0 ? formatDecimalHours(day.netMinutes) : ''}
+                {hasCorrection && <span className="ml-1 text-[9px] text-blue-500 align-super">*</span>}
+              </td>
+            </tr>
+            {/* Inline notes row */}
+            {hasNotes && (
+              <tr className={`border-b border-gray-100 ${hasPending ? 'bg-amber-50/30' : hasCorrection ? 'bg-blue-50/30' : ''}`}>
+                <td colSpan={11} className="px-3 pb-2 pt-0">
+                  <div className="flex flex-wrap gap-1.5 pl-1 items-center">
+                    {day.pendingCorrection && (
+                      <div className="inline-flex items-center gap-2 text-[10px] bg-amber-100 text-amber-800 px-2.5 py-1 rounded-full font-medium" onClick={e => e.stopPropagation()}>
+                        <Clock className="w-2.5 h-2.5" />
+                        <span>
+                          Employee requests: {day.pendingCorrection.proposed_hours != null
+                            ? `${day.pendingCorrection.proposed_hours}h`
+                            : `${formatTimeEST(day.pendingCorrection.proposed_clock_in)} - ${formatTimeEST(day.pendingCorrection.proposed_clock_out)}`
+                          }
+                          {day.pendingCorrection.note && ` - "${day.pendingCorrection.note}"`}
+                        </span>
+                        {onApproveCorrection && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); onApproveCorrection(day.pendingCorrection!.id); }}
+                            className="ml-1 px-1.5 py-0.5 bg-green-600 text-white rounded text-[9px] font-bold hover:bg-green-700"
+                          >
+                            Approve
+                          </button>
+                        )}
+                        {onRejectCorrection && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); onRejectCorrection(day.pendingCorrection!.id); }}
+                            className="px-1.5 py-0.5 bg-red-500 text-white rounded text-[9px] font-bold hover:bg-red-600"
+                          >
+                            Reject
+                          </button>
+                        )}
+                      </div>
+                    )}
+                    {day.correction?.note && (
+                      <span className="inline-flex items-center gap-1 text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">
+                        <Pencil className="w-2.5 h-2.5" /> {day.correction.note}
+                      </span>
+                    )}
+                    {day.notes.map(note => (
+                      <span key={note.id} className={`inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-medium ${
+                        note.author_type === 'manager'
+                          ? 'bg-purple-100 text-purple-700'
+                          : note.status === 'resolved' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
+                      }`}>
+                        <MessageSquare className="w-2.5 h-2.5" /> {note.body}
+                        {note.resolution_comment && <span className="text-green-600 ml-1">- {note.resolution_comment}</span>}
+                      </span>
+                    ))}
+                  </div>
+                </td>
+              </tr>
+            )}
+          </React.Fragment>
+        );
+      })}
+      <tr className="bg-gray-100 border-t border-gray-200 font-bold text-xs">
+        <td colSpan={8} className="px-3 py-2 text-gray-600">{week.label} Subtotal</td>
+        <td className="px-2 py-2 text-right text-gray-700">{formatDecimalHours(week.regMinutes)}</td>
+        <td className="px-2 py-2 text-right text-orange-600">{formatDecimalHours(week.otMinutes)}</td>
+        <td className="px-3 py-2 text-right text-moja-blue bg-blue-50">{formatDecimalHours(week.totalMinutes)}</td>
+      </tr>
+    </>
+  );
+}
+
+function AdminCellValue({ original, proposed, changed }: { original: string; proposed?: string; changed?: boolean }) {
+  if (!proposed || !changed) {
+    return <span className="text-gray-600">{original}</span>;
+  }
+  return (
+    <span>
+      <span className="text-red-500 line-through text-[10px]">{original}</span>
+      <br />
+      <span className="text-green-700 font-semibold">{proposed}</span>
+    </span>
   );
 }

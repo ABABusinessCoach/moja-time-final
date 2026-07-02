@@ -141,17 +141,32 @@ async function getWeeklyTotal(
 
   const { data: logs } = await supabase
     .from("clock_logs")
-    .select("duration_minutes")
+    .select("id, duration_minutes")
     .eq("staff_id", staffId)
     .gte("clock_in_time", weekStart.toISOString())
     .lte("clock_in_time", weekEnd.toISOString())
     .not("duration_minutes", "is", null);
 
   if (!logs || logs.length === 0) return 0;
-  return logs.reduce(
+  const grossMinutes = logs.reduce(
     (sum: number, l: { duration_minutes: number }) => sum + (l.duration_minutes || 0),
     0
   );
+
+  const logIds = logs.map((l: { id: string }) => l.id);
+  const { data: lunches } = await supabase
+    .from("break_logs")
+    .select("duration_minutes")
+    .in("clock_log_id", logIds)
+    .eq("break_type", "lunch")
+    .not("duration_minutes", "is", null);
+
+  const lunchMinutes = (lunches || []).reduce(
+    (sum: number, b: { duration_minutes: number }) => sum + (b.duration_minutes || 0),
+    0
+  );
+
+  return grossMinutes - lunchMinutes;
 }
 
 async function verifyAdmin(
@@ -607,8 +622,7 @@ Deno.serve(async (req: Request) => {
       const totalMinutes = Math.round(
         (now.getTime() - clockInTime.getTime()) / 60000
       );
-      const breakMinutes = await getBreakMinutes(supabase, openLog.id);
-      const durationMinutes = totalMinutes - breakMinutes;
+      const durationMinutes = totalMinutes;
 
       await supabase
         .from("clock_logs")
@@ -631,10 +645,9 @@ Deno.serve(async (req: Request) => {
         action: "clock_out",
         staff_name: matchedStaff.name,
         duration_minutes: durationMinutes,
-        break_minutes: breakMinutes,
         clock_in_time: openLog.clock_in_time,
         weekly_total_hours:
-          Math.round(((weeklyTotalMinutes + durationMinutes) / 60) * 10) / 10,
+          Math.round((weeklyTotalMinutes / 60) * 10) / 10,
       });
     }
 
@@ -882,7 +895,7 @@ Deno.serve(async (req: Request) => {
 
       const { data: breaks } = await supabase
         .from("break_logs")
-        .select("clock_log_id, break_start, break_end, duration_minutes")
+        .select("clock_log_id, break_start, break_end, duration_minutes, break_type")
         .eq("staff_id", matchedStaff.id)
         .gte("break_start", payPeriodStart.toISOString())
         .lte("break_start", payPeriodEnd.toISOString());
@@ -897,14 +910,25 @@ Deno.serve(async (req: Request) => {
         (l: { clock_in_time: string }) => new Date(l.clock_in_time) > week1End
       );
 
-      const week1Minutes = week1Logs.reduce(
+      const week1GrossMinutes = week1Logs.reduce(
         (sum: number, l: { duration_minutes: number | null }) => sum + (l.duration_minutes || 0),
         0
       );
-      const week2Minutes = week2Logs.reduce(
+      const week2GrossMinutes = week2Logs.reduce(
         (sum: number, l: { duration_minutes: number | null }) => sum + (l.duration_minutes || 0),
         0
       );
+
+      // Deduct only lunch (unpaid); paid breaks are NOT deducted
+      const week1LunchMins = allBreaks
+        .filter((b: { break_start: string; break_type: string }) => new Date(b.break_start) <= week1End && b.break_type === "lunch")
+        .reduce((sum: number, b: { duration_minutes: number | null }) => sum + (b.duration_minutes || 0), 0);
+      const week2LunchMins = allBreaks
+        .filter((b: { break_start: string; break_type: string }) => new Date(b.break_start) > week1End && b.break_type === "lunch")
+        .reduce((sum: number, b: { duration_minutes: number | null }) => sum + (b.duration_minutes || 0), 0);
+
+      const week1Minutes = week1GrossMinutes - week1LunchMins;
+      const week2Minutes = week2GrossMinutes - week2LunchMins;
       const totalMinutes = week1Minutes + week2Minutes;
 
       const { data: settings } = await supabase
@@ -931,16 +955,16 @@ Deno.serve(async (req: Request) => {
           end: toESTISO(week1End),
           logs: week1Logs,
           breaks: allBreaks.filter((b: { break_start: string }) => new Date(b.break_start) <= week1End),
-          total_hours: Math.round((week1Minutes / 60) * 10) / 10,
+          total_hours: Math.round((week1Minutes / 60) * 100) / 100,
         },
         week2: {
           start: toESTISO(week2Start),
           end: toESTISO(week2End),
           logs: week2Logs,
           breaks: allBreaks.filter((b: { break_start: string }) => new Date(b.break_start) > week1End),
-          total_hours: Math.round((week2Minutes / 60) * 10) / 10,
+          total_hours: Math.round((week2Minutes / 60) * 100) / 100,
         },
-        total_hours: Math.round((totalMinutes / 60) * 10) / 10,
+        total_hours: Math.round((totalMinutes / 60) * 100) / 100,
         overtime_threshold: Number(overtimeThreshold),
       });
     }
@@ -1058,9 +1082,8 @@ Deno.serve(async (req: Request) => {
       }
 
       const clockInTime = new Date(openLog.clock_in_time);
-      const breakMinutes = await getBreakMinutes(supabase, openLog.id);
       const durationMinutes =
-        Math.round((now.getTime() - clockInTime.getTime()) / 60000) - breakMinutes;
+        Math.round((now.getTime() - clockInTime.getTime()) / 60000);
 
       await supabase
         .from("clock_logs")
@@ -1300,9 +1323,8 @@ Deno.serve(async (req: Request) => {
             ? new Date(existing.clock_out_time)
             : null;
         if (outTime) {
-          const breakMins = await getBreakMinutes(supabase, log_id);
           updates.duration_minutes =
-            Math.round((outTime.getTime() - inTime.getTime()) / 60000) - breakMins;
+            Math.round((outTime.getTime() - inTime.getTime()) / 60000);
         }
       }
 
@@ -1477,9 +1499,8 @@ Deno.serve(async (req: Request) => {
           }
 
           const clockInTime = new Date(openLog.clock_in_time);
-          const breakMins = await getBreakMinutes(supabase, openLog.id);
           const durationMinutes =
-            Math.round((now.getTime() - clockInTime.getTime()) / 60000) - breakMins;
+            Math.round((now.getTime() - clockInTime.getTime()) / 60000);
 
           await supabase
             .from("clock_logs")

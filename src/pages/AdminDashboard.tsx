@@ -270,7 +270,7 @@ export function AdminDashboard() {
                   )}
                   {log.duration_minutes != null && (
                     <span className="text-sm font-bold text-moja-blue/50 font-mono">
-                      {Math.floor(log.duration_minutes / 60)}h {Math.round(log.duration_minutes % 60)}m
+                      {(log.duration_minutes / 60).toFixed(2)}
                     </span>
                   )}
                   {!log.clock_out_time && (

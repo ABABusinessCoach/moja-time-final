@@ -5,10 +5,10 @@ import { Download, Calendar, ArrowUpDown, BarChart3, CalendarRange, X, Loader2 }
 
 function getWeekDates(date: Date): { start: Date; end: Date } {
   const d = new Date(date);
-  const day = d.getDay();
-  const diffToMon = day === 0 ? -6 : 1 - day;
+  const day = d.getDay(); // 0=Sun, 6=Sat
+  const diffToSat = day === 6 ? 0 : -(day + 1);
   const start = new Date(d);
-  start.setDate(d.getDate() + diffToMon);
+  start.setDate(d.getDate() + diffToSat);
   start.setHours(0, 0, 0, 0);
   const end = new Date(start);
   end.setDate(start.getDate() + 6);
@@ -20,7 +20,7 @@ function formatDate(d: Date): string {
   return d.toISOString().split('T')[0];
 }
 
-const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const DAY_NAMES = ['Sat', 'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
 
 function formatHM(decimalHours: number): string {
   if (decimalHours <= 0) return '-';
@@ -28,6 +28,11 @@ function formatHM(decimalHours: number): string {
   const h = Math.floor(totalMinutes / 60);
   const m = totalMinutes % 60;
   return `${h}h ${m.toString().padStart(2, '0')}m`;
+}
+
+function formatDec(mins: number): string {
+  if (mins <= 0) return '-';
+  return (mins / 60).toFixed(2);
 }
 
 function HoursBarChart({ data }: { data: { name: string; hours: number }[] }) {
@@ -38,7 +43,7 @@ function HoursBarChart({ data }: { data: { name: string; hours: number }[] }) {
       {data.map((d, i) => (
         <div key={i} className="flex-1 flex flex-col items-center gap-1">
           <span className="text-xs font-bold text-moja-blue/50 font-mono">
-            {d.hours > 0 ? formatHM(d.hours) : ''}
+            {d.hours > 0 ? d.hours.toFixed(2) : ''}
           </span>
           <div
             className="w-full rounded-t-md bg-moja-aqua/70 transition-all duration-500 min-h-[2px]"
@@ -64,11 +69,11 @@ function downloadBlob(csv: string, filename: string) {
 export function WeeklyReports() {
   const [weekOf, setWeekOf] = useState(() => {
     const now = new Date();
-    const day = now.getDay();
-    const diff = day === 0 ? -6 : 1 - day;
-    const mon = new Date(now);
-    mon.setDate(now.getDate() + diff);
-    return formatDate(mon);
+    const day = now.getDay(); // 0=Sun, 6=Sat
+    const diffToSat = day === 6 ? 0 : -(day + 1);
+    const sat = new Date(now);
+    sat.setDate(now.getDate() + diffToSat);
+    return formatDate(sat);
   });
   const [staffList, setStaffList] = useState<Staff[]>([]);
   const [logs, setLogs] = useState<ClockLog[]>([]);
@@ -145,21 +150,24 @@ export function WeeklyReports() {
 
       staffLogs.forEach(log => {
         const logDate = new Date(log.clock_in_time);
-        let dayIndex = logDate.getDay() - 1;
-        if (dayIndex < 0) dayIndex = 6;
+        const dow = logDate.getDay(); // 0=Sun, 6=Sat
+        const dayIndex = dow === 6 ? 0 : dow + 1; // Sat=0, Sun=1, Mon=2, Tue=3, Wed=4, Thu=5, Fri=6
 
         if (log.clock_out_time) {
           const rawMins = (new Date(log.clock_out_time).getTime() - logDate.getTime()) / 60000;
-          dailyRaw[dayIndex] += rawMins / 60;
+          dailyRaw[dayIndex] += rawMins;
         }
         if (log.duration_minutes) {
-          dailyFinal[dayIndex] += log.duration_minutes / 60;
+          const logLunchMins = breakLogs
+            .filter(b => b.clock_log_id === log.id && b.break_type === 'lunch')
+            .reduce((s, b) => s + (b.duration_minutes || 0), 0);
+          dailyFinal[dayIndex] += (log.duration_minutes - logLunchMins);
         }
       });
 
       const totalRaw = dailyRaw.reduce((a, b) => a + b, 0);
       const totalFinal = dailyFinal.reduce((a, b) => a + b, 0);
-      const overtime = Math.max(0, totalFinal - 40);
+      const overtime = Math.max(0, totalFinal - 40 * 60);
       const regularHours = totalFinal - overtime;
 
       return { staff, dailyRaw, dailyFinal, totalRaw, totalFinal, overtime, regularHours };
@@ -253,9 +261,6 @@ export function WeeklyReports() {
             const clockIn = new Date(log.clock_in_time);
             const clockOut = log.clock_out_time ? new Date(log.clock_out_time) : null;
             const rawMinutes = clockOut ? (clockOut.getTime() - clockIn.getTime()) / 60000 : 0;
-            const finalHours = log.duration_minutes ? log.duration_minutes / 60 : 0;
-            weekTotal += finalHours;
-            staffTotalRaw += rawMinutes / 60;
             const { end: weekEnd } = getWeekDates(clockIn);
 
             const logBreaks = rangeBreaks.filter(b => b.clock_log_id === log.id);
@@ -266,28 +271,32 @@ export function WeeklyReports() {
               .filter(b => b.break_type === 'lunch')
               .reduce((sum, b) => sum + (b.duration_minutes || 0), 0);
 
+            const finalMinutes = log.duration_minutes ? Math.max(0, log.duration_minutes - lunchMins) : 0;
+            weekTotal += finalMinutes;
+            staffTotalRaw += rawMinutes;
+
             rows.push([
               staff.name,
               formatDate(clockIn),
               clockIn.toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: true }),
               clockOut ? clockOut.toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: true }) : 'In Progress',
-              formatHM(rawMinutes / 60),
+              rawMinutes > 0 ? (rawMinutes / 60).toFixed(2) : '-',
               breakMins > 0 ? `${breakMins}m` : '',
               lunchMins > 0 ? `${lunchMins}m` : '',
-              formatHM(finalHours),
+              finalMinutes > 0 ? (finalMinutes / 60).toFixed(2) : '-',
               '',
               formatDate(weekEnd),
               log.notes || '',
             ]);
           });
 
-          const weekOvertime = Math.max(0, weekTotal - 40);
+          const weekOvertime = Math.max(0, weekTotal - 40 * 60);
           staffTotalHours += weekTotal;
           staffTotalOvertime += weekOvertime;
 
           // Mark overtime on last entry of the week
           if (weekOvertime > 0 && weekLogs.length > 0) {
-            rows[rows.length - 1][8] = formatHM(weekOvertime);
+            rows[rows.length - 1][8] = (weekOvertime / 60).toFixed(2);
           }
         });
 
@@ -297,11 +306,11 @@ export function WeeklyReports() {
           '',
           '',
           '',
-          formatHM(staffTotalRaw),
+          staffTotalRaw > 0 ? (staffTotalRaw / 60).toFixed(2) : '-',
           '',
           '',
-          formatHM(staffTotalHours),
-          formatHM(staffTotalOvertime),
+          staffTotalHours > 0 ? (staffTotalHours / 60).toFixed(2) : '-',
+          staffTotalOvertime > 0 ? (staffTotalOvertime / 60).toFixed(2) : '-',
           '',
           '',
         ]);
@@ -318,11 +327,11 @@ export function WeeklyReports() {
         `${rangeStart} to ${rangeEnd}`,
         '',
         '',
-        formatHM(grandTotalRaw),
+        grandTotalRaw > 0 ? (grandTotalRaw / 60).toFixed(2) : '-',
         '',
         '',
-        formatHM(grandTotalHours),
-        formatHM(grandTotalOvertime),
+        grandTotalHours > 0 ? (grandTotalHours / 60).toFixed(2) : '-',
+        grandTotalOvertime > 0 ? (grandTotalOvertime / 60).toFixed(2) : '-',
         '',
         '',
       ]);
@@ -341,7 +350,7 @@ export function WeeklyReports() {
 
   const dailyTotals = DAY_NAMES.map((name, i) => ({
     name,
-    hours: weekData.reduce((sum, d) => sum + d.dailyFinal[i], 0),
+    hours: weekData.reduce((sum, d) => sum + d.dailyFinal[i], 0) / 60,
   }));
 
   return (
@@ -474,12 +483,12 @@ export function WeeklyReports() {
                   <div key={d.staff.id} className="border border-gray-100 rounded-lg p-3">
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-sm font-bold text-moja-blue">{d.staff.name}</span>
-                      <span className="text-sm font-bold text-moja-blue font-mono">{formatHM(d.totalFinal)}</span>
+                      <span className="text-sm font-bold text-moja-blue font-mono">{formatDec(d.totalFinal)}</span>
                     </div>
                     <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
                       <div
                         className={`h-full rounded-full transition-all ${d.overtime > 0 ? 'bg-moja-orange' : 'bg-moja-aqua'}`}
-                        style={{ width: `${Math.min(100, (d.totalFinal / 40) * 100)}%` }}
+                        style={{ width: `${Math.min(100, (d.totalFinal / (40 * 60)) * 100)}%` }}
                       />
                     </div>
                   </div>
@@ -523,19 +532,19 @@ export function WeeklyReports() {
                   {weekData.map(({ staff, dailyFinal, totalRaw, totalFinal, overtime }, idx) => (
                     <tr key={staff.id} className={idx % 2 === 1 ? 'bg-gray-50/50' : ''}>
                       <td className="px-4 py-3 font-bold text-moja-blue">{staff.name}</td>
-                      {dailyFinal.map((h, i) => (
+                      {dailyFinal.map((m, i) => (
                         <td key={i} className="text-center px-3 py-3 text-sm font-semibold text-moja-blue/70 font-mono">
-                          {h > 0 ? formatHM(h) : '-'}
+                          {formatDec(m)}
                         </td>
                       ))}
                       <td className="text-center px-3 py-3 font-semibold text-moja-blue/50 font-mono">
-                        {totalRaw > 0 ? formatHM(totalRaw) : '-'}
+                        {formatDec(totalRaw)}
                       </td>
                       <td className="text-center px-3 py-3 font-bold text-moja-blue font-mono bg-moja-blue/5">
-                        {formatHM(totalFinal)}
+                        {formatDec(totalFinal)}
                       </td>
                       <td className={`text-center px-3 py-3 font-bold font-mono ${overtime > 0 ? 'text-moja-orange bg-moja-orange/10' : 'text-moja-blue/30'}`}>
-                        {overtime > 0 ? formatHM(overtime) : '-'}
+                        {formatDec(overtime)}
                       </td>
                     </tr>
                   ))}
@@ -551,21 +560,17 @@ export function WeeklyReports() {
                       <td className="px-4 py-3 text-moja-blue">Totals</td>
                       {DAY_NAMES.map((_, i) => (
                         <td key={i} className="text-center px-3 py-3 text-sm text-moja-blue font-mono">
-                          {weekData.reduce((s, d) => s + d.dailyFinal[i], 0) > 0
-                            ? formatHM(weekData.reduce((s, d) => s + d.dailyFinal[i], 0))
-                            : '-'}
+                          {formatDec(weekData.reduce((s, d) => s + d.dailyFinal[i], 0))}
                         </td>
                       ))}
                       <td className="text-center px-3 py-3 text-moja-blue/50 font-mono">
-                        {formatHM(weekData.reduce((s, d) => s + d.totalRaw, 0))}
+                        {formatDec(weekData.reduce((s, d) => s + d.totalRaw, 0))}
                       </td>
                       <td className="text-center px-3 py-3 text-moja-blue font-mono">
-                        {formatHM(weekData.reduce((s, d) => s + d.totalFinal, 0))}
+                        {formatDec(weekData.reduce((s, d) => s + d.totalFinal, 0))}
                       </td>
                       <td className="text-center px-3 py-3 text-moja-orange font-mono">
-                        {weekData.reduce((s, d) => s + d.overtime, 0) > 0
-                          ? formatHM(weekData.reduce((s, d) => s + d.overtime, 0))
-                          : '-'}
+                        {formatDec(weekData.reduce((s, d) => s + d.overtime, 0))}
                       </td>
                     </tr>
                   )}

@@ -233,7 +233,7 @@ export function TimeLogs() {
                   </td>
                   <td className="px-4 py-3 text-center text-sm font-bold text-moja-blue/60 font-mono">
                     {log.duration_minutes != null
-                      ? `${Math.floor(log.duration_minutes / 60)}h ${Math.round(log.duration_minutes % 60)}m`
+                      ? (log.duration_minutes / 60).toFixed(2)
                       : '-'
                     }
                   </td>
