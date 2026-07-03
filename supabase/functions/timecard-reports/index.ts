@@ -961,7 +961,7 @@ Deno.serve(async (req: Request) => {
         .maybeSingle();
       if (!admin) return json({ success: false, message: "Not an admin" }, 403);
 
-      const { report_id, clock_log_id, proposed_clock_in, proposed_clock_out, note } = await req.json();
+      const { report_id, clock_log_id, proposed_clock_in, proposed_clock_out, break_edits, note } = await req.json();
       if (!report_id || !clock_log_id) return json({ success: false, message: "report_id and clock_log_id required" }, 400);
 
       const { data: report } = await supabase
@@ -971,7 +971,6 @@ Deno.serve(async (req: Request) => {
         .maybeSingle();
 
       if (!report) return json({ success: false, message: "Report not found" }, 404);
-      if (report.status === "approved") return json({ success: false, message: "Report already finalized" }, 400);
 
       // Get original shift data
       const { data: shift } = await supabase
@@ -1016,6 +1015,83 @@ Deno.serve(async (req: Request) => {
         });
 
       if (corrErr) return json({ success: false, message: corrErr.message }, 500);
+
+      // Handle break/lunch time edits
+      if (break_edits) {
+        const { break_start, break_end, lunch_start, lunch_end } = break_edits;
+
+        // Update or create regular break
+        if (break_start || break_end) {
+          const { data: existingBreak } = await supabase
+            .from("break_logs")
+            .select("id")
+            .eq("clock_log_id", clock_log_id)
+            .neq("break_type", "lunch")
+            .maybeSingle();
+
+          const breakDuration = (break_start && break_end)
+            ? Math.round((new Date(break_end).getTime() - new Date(break_start).getTime()) / 60000)
+            : null;
+
+          if (existingBreak) {
+            await supabase.from("break_logs").update({
+              break_start: break_start || undefined,
+              break_end: break_end || undefined,
+              duration_minutes: breakDuration,
+            }).eq("id", existingBreak.id);
+          } else if (break_start) {
+            await supabase.from("break_logs").insert({
+              clock_log_id,
+              staff_id: report.staff_id,
+              break_start,
+              break_end: break_end || null,
+              duration_minutes: breakDuration,
+              break_type: "break",
+            });
+          }
+        } else {
+          // If both cleared, delete existing break
+          await supabase.from("break_logs").delete()
+            .eq("clock_log_id", clock_log_id)
+            .neq("break_type", "lunch");
+        }
+
+        // Update or create lunch break
+        if (lunch_start || lunch_end) {
+          const { data: existingLunch } = await supabase
+            .from("break_logs")
+            .select("id")
+            .eq("clock_log_id", clock_log_id)
+            .eq("break_type", "lunch")
+            .maybeSingle();
+
+          const lunchDuration = (lunch_start && lunch_end)
+            ? Math.round((new Date(lunch_end).getTime() - new Date(lunch_start).getTime()) / 60000)
+            : null;
+
+          if (existingLunch) {
+            await supabase.from("break_logs").update({
+              break_start: lunch_start || undefined,
+              break_end: lunch_end || undefined,
+              duration_minutes: lunchDuration,
+            }).eq("id", existingLunch.id);
+          } else if (lunch_start) {
+            await supabase.from("break_logs").insert({
+              clock_log_id,
+              staff_id: report.staff_id,
+              break_start: lunch_start,
+              break_end: lunch_end || null,
+              duration_minutes: lunchDuration,
+              break_type: "lunch",
+            });
+          }
+        } else {
+          // If both cleared, delete existing lunch
+          await supabase.from("break_logs").delete()
+            .eq("clock_log_id", clock_log_id)
+            .eq("break_type", "lunch");
+        }
+      }
 
       // Recalculate total hours using only approved corrections
       const { data: ppData } = await supabase

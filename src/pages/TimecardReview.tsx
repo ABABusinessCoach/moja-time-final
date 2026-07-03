@@ -240,6 +240,10 @@ export function TimecardReview() {
   const [editingShift, setEditingShift] = useState<Shift | null>(null);
   const [editClockIn, setEditClockIn] = useState('');
   const [editClockOut, setEditClockOut] = useState('');
+  const [editBreakOut, setEditBreakOut] = useState('');
+  const [editBreakIn, setEditBreakIn] = useState('');
+  const [editLunchOut, setEditLunchOut] = useState('');
+  const [editLunchIn, setEditLunchIn] = useState('');
   const [editNote, setEditNote] = useState('');
   const [savingCorrection, setSavingCorrection] = useState(false);
 
@@ -339,6 +343,14 @@ export function TimecardReview() {
       setEditClockOut(shift.clock_out_time ? toESTInputTime(shift.clock_out_time) : '');
       setEditNote('');
     }
+
+    const shiftBreaks = selectedReport?.breaks.filter(b => b.clock_log_id === shift.id) || [];
+    const regularBreak = shiftBreaks.find(b => b.break_type !== 'lunch');
+    const lunchBreak = shiftBreaks.find(b => b.break_type === 'lunch');
+    setEditBreakOut(regularBreak?.break_start ? toESTInputTime(regularBreak.break_start) : '');
+    setEditBreakIn(regularBreak?.break_end ? toESTInputTime(regularBreak.break_end) : '');
+    setEditLunchOut(lunchBreak?.break_start ? toESTInputTime(lunchBreak.break_start) : '');
+    setEditLunchIn(lunchBreak?.break_end ? toESTInputTime(lunchBreak.break_end) : '');
   }
 
   async function handleApproveCorrection(correctionId: string) {
@@ -385,6 +397,12 @@ export function TimecardReview() {
         clock_log_id: editingShift.id,
         proposed_clock_in: toISOFromESTTime(shiftDate, editClockIn),
         proposed_clock_out: toISOFromESTTime(shiftDate, editClockOut),
+        break_edits: {
+          break_start: editBreakOut ? toISOFromESTTime(shiftDate, editBreakOut) : null,
+          break_end: editBreakIn ? toISOFromESTTime(shiftDate, editBreakIn) : null,
+          lunch_start: editLunchOut ? toISOFromESTTime(shiftDate, editLunchOut) : null,
+          lunch_end: editLunchIn ? toISOFromESTTime(shiftDate, editLunchIn) : null,
+        },
         note: editNote.trim() || null,
       },
       authToken: token,
@@ -422,7 +440,7 @@ export function TimecardReview() {
     const periodReg = weekBlocks.reduce((s, w) => s + w.regMinutes, 0);
     const periodOT = weekBlocks.reduce((s, w) => s + w.otMinutes, 0);
     const hasOpenShift = selectedReport.shifts.some(s => !s.clock_out_time);
-    const canEdit = report.status !== 'approved';
+    const canEdit = true;
 
     return (
       <div className="space-y-6">
@@ -675,7 +693,7 @@ export function TimecardReview() {
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1 block">New Clock In</label>
+                    <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1 block">Clock In</label>
                     <input
                       type="time"
                       value={editClockIn}
@@ -684,7 +702,7 @@ export function TimecardReview() {
                     />
                   </div>
                   <div>
-                    <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1 block">New Clock Out</label>
+                    <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1 block">Clock Out</label>
                     <input
                       type="time"
                       value={editClockOut}
@@ -693,18 +711,77 @@ export function TimecardReview() {
                     />
                   </div>
                 </div>
+                <div className="border-t border-gray-100 pt-3">
+                  <p className="text-[11px] font-semibold text-green-700 uppercase tracking-wide mb-2">Break (Paid)</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1 block">Break Out</label>
+                      <input
+                        type="time"
+                        value={editBreakOut}
+                        onChange={e => setEditBreakOut(e.target.value)}
+                        className="w-full px-3 py-2 text-sm border-2 border-gray-200 rounded-lg focus:outline-none focus:border-green-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1 block">Break In</label>
+                      <input
+                        type="time"
+                        value={editBreakIn}
+                        onChange={e => setEditBreakIn(e.target.value)}
+                        className="w-full px-3 py-2 text-sm border-2 border-gray-200 rounded-lg focus:outline-none focus:border-green-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+                <div className="border-t border-gray-100 pt-3">
+                  <p className="text-[11px] font-semibold text-gray-600 uppercase tracking-wide mb-2">Lunch (Unpaid)</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1 block">Lunch Out</label>
+                      <input
+                        type="time"
+                        value={editLunchOut}
+                        onChange={e => setEditLunchOut(e.target.value)}
+                        className="w-full px-3 py-2 text-sm border-2 border-gray-200 rounded-lg focus:outline-none focus:border-gray-400"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1 block">Lunch In</label>
+                      <input
+                        type="time"
+                        value={editLunchIn}
+                        onChange={e => setEditLunchIn(e.target.value)}
+                        className="w-full px-3 py-2 text-sm border-2 border-gray-200 rounded-lg focus:outline-none focus:border-gray-400"
+                      />
+                    </div>
+                  </div>
+                </div>
                 {editClockIn && editClockOut && (() => {
                   const [hIn, mIn] = editClockIn.split(':').map(Number);
                   const [hOut, mOut] = editClockOut.split(':').map(Number);
-                  const newMins = Math.max(0, (hOut * 60 + mOut) - (hIn * 60 + mIn));
+                  const grossMins = Math.max(0, (hOut * 60 + mOut) - (hIn * 60 + mIn));
+                  let lunchDeduction = 0;
+                  if (editLunchOut && editLunchIn) {
+                    const [lhO, lmO] = editLunchOut.split(':').map(Number);
+                    const [lhI, lmI] = editLunchIn.split(':').map(Number);
+                    lunchDeduction = Math.max(0, (lhI * 60 + lmI) - (lhO * 60 + lmO));
+                  }
+                  const newMins = grossMins - lunchDeduction;
                   const oldMins = editingShift.duration_minutes || 0;
-                  const diff = newMins - oldMins;
+                  const shiftBreaks = selectedReport?.breaks.filter(b => b.clock_log_id === editingShift.id && b.break_type === 'lunch') || [];
+                  const oldLunch = shiftBreaks.reduce((s, b) => s + (b.duration_minutes || 0), 0);
+                  const oldNet = oldMins - oldLunch;
+                  const diff = newMins - oldNet;
                   const newPeriodTotal = periodTotal + diff;
                   return (
                     <div className="bg-blue-50 rounded-lg p-3 space-y-1.5">
                       <div className="flex items-center justify-between">
-                        <span className="text-xs text-blue-600 font-medium">Updated shift hours:</span>
-                        <span className="text-sm font-bold text-blue-700">{(newMins / 60).toFixed(2)}h</span>
+                        <span className="text-xs text-blue-600 font-medium">Net shift hours:</span>
+                        <span className="text-sm font-bold text-blue-700">
+                          {(newMins / 60).toFixed(2)}h
+                          {lunchDeduction > 0 && <span className="text-[10px] text-gray-400 ml-1">(gross {(grossMins / 60).toFixed(2)} - lunch {(lunchDeduction / 60).toFixed(2)})</span>}
+                        </span>
                       </div>
                       <div className="flex items-center justify-between border-t border-blue-100 pt-1.5">
                         <span className="text-xs text-blue-600 font-medium">New period total:</span>

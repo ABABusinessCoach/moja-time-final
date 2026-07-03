@@ -200,6 +200,72 @@ async function verifyAdmin(
   return admin ? user.id : null;
 }
 
+async function getAutoClockOutHours(
+  supabase: ReturnType<typeof createClient>
+): Promise<number> {
+  const { data } = await supabase
+    .from("app_settings")
+    .select("value")
+    .eq("key", "auto_clock_out_hours")
+    .maybeSingle();
+  return data?.value ? Number(data.value) : 16;
+}
+
+async function autoCloseStaleShifts(
+  supabase: ReturnType<typeof createClient>,
+  maxHours: number
+): Promise<number> {
+  const cutoff = new Date(Date.now() - maxHours * 60 * 60 * 1000);
+
+  const { data: staleShifts } = await supabase
+    .from("clock_logs")
+    .select("id, staff_id, clock_in_time, notes")
+    .is("clock_out_time", null)
+    .lt("clock_in_time", cutoff.toISOString());
+
+  if (!staleShifts || staleShifts.length === 0) return 0;
+
+  let closed = 0;
+  for (const shift of staleShifts) {
+    const clockIn = new Date(shift.clock_in_time);
+    const autoOut = new Date(clockIn.getTime() + maxHours * 60 * 60 * 1000);
+    const durationMinutes = maxHours * 60;
+
+    // Close any open breaks for this shift
+    const { data: openBreaks } = await supabase
+      .from("break_logs")
+      .select("id, break_start")
+      .eq("clock_log_id", shift.id)
+      .is("break_end", null);
+
+    for (const brk of (openBreaks || [])) {
+      const breakDur = Math.round((autoOut.getTime() - new Date(brk.break_start).getTime()) / 60000);
+      await supabase.from("break_logs").update({
+        break_end: toESTISO(autoOut),
+        duration_minutes: breakDur,
+      }).eq("id", brk.id);
+    }
+
+    const newNote = `[${toESTISO(autoOut).replace("T", " ").slice(0, 16)}] Auto clock-out: shift exceeded ${maxHours}h limit`;
+    const notes = shift.notes ? `${shift.notes}\n${newNote}` : newNote;
+
+    await supabase.from("clock_logs").update({
+      clock_out_time: toESTISO(autoOut),
+      duration_minutes: durationMinutes,
+      notes,
+    }).eq("id", shift.id);
+
+    await supabase.from("staff").update({
+      is_clocked_in: false,
+      is_on_break: false,
+    }).eq("id", shift.staff_id);
+
+    closed++;
+  }
+
+  return closed;
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 200, headers: corsHeaders });
@@ -492,10 +558,54 @@ Deno.serve(async (req: Request) => {
       await recordAttempt(supabase, ipAddress, true);
 
       if (matchedStaff.is_clocked_in) {
-        return json(
-          { success: false, message: `${matchedStaff.name} is already clocked in` },
-          400
-        );
+        // Check if the open shift exceeds the auto clock-out limit
+        const maxHours = await getAutoClockOutHours(supabase);
+        const { data: openLog } = await supabase
+          .from("clock_logs")
+          .select("id, clock_in_time")
+          .eq("staff_id", matchedStaff.id)
+          .is("clock_out_time", null)
+          .order("clock_in_time", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (openLog) {
+          const shiftAge = (Date.now() - new Date(openLog.clock_in_time).getTime()) / (60 * 60 * 1000);
+          if (shiftAge >= maxHours) {
+            // Auto-close the stale shift capped at maxHours
+            const clockIn = new Date(openLog.clock_in_time);
+            const autoOut = new Date(clockIn.getTime() + maxHours * 60 * 60 * 1000);
+            const durationMinutes = maxHours * 60;
+
+            const { data: openBreaks } = await supabase
+              .from("break_logs")
+              .select("id, break_start")
+              .eq("clock_log_id", openLog.id)
+              .is("break_end", null);
+
+            for (const brk of (openBreaks || [])) {
+              const breakDur = Math.round((autoOut.getTime() - new Date(brk.break_start).getTime()) / 60000);
+              await supabase.from("break_logs").update({
+                break_end: toESTISO(autoOut),
+                duration_minutes: breakDur,
+              }).eq("id", brk.id);
+            }
+
+            const newNote = `[${toESTISO(autoOut).replace("T", " ").slice(0, 16)}] Auto clock-out: shift exceeded ${maxHours}h limit`;
+            await supabase.from("clock_logs").update({
+              clock_out_time: toESTISO(autoOut),
+              duration_minutes: durationMinutes,
+              notes: newNote,
+            }).eq("id", openLog.id);
+
+            await supabase.from("staff").update({ is_clocked_in: false, is_on_break: false }).eq("id", matchedStaff.id);
+          } else {
+            return json(
+              { success: false, message: `${matchedStaff.name} is already clocked in` },
+              400
+            );
+          }
+        }
       }
 
       const now = new Date();
@@ -622,13 +732,23 @@ Deno.serve(async (req: Request) => {
       const totalMinutes = Math.round(
         (now.getTime() - clockInTime.getTime()) / 60000
       );
-      const durationMinutes = totalMinutes;
+
+      // Cap at auto_clock_out_hours to prevent inflated hours from forgotten punches
+      const maxHours = await getAutoClockOutHours(supabase);
+      const maxMinutes = maxHours * 60;
+      const durationMinutes = Math.min(totalMinutes, maxMinutes);
+      const effectiveOut = totalMinutes > maxMinutes
+        ? new Date(clockInTime.getTime() + maxMinutes * 60 * 1000)
+        : now;
 
       await supabase
         .from("clock_logs")
         .update({
-          clock_out_time: toESTISO(now),
+          clock_out_time: toESTISO(effectiveOut),
           duration_minutes: durationMinutes,
+          ...(totalMinutes > maxMinutes ? {
+            notes: `[${toESTISO(now).replace("T", " ").slice(0, 16)}] Duration capped at ${maxHours}h (actual elapsed: ${(totalMinutes / 60).toFixed(1)}h)`
+          } : {}),
         })
         .eq("id", openLog.id);
 
@@ -1082,13 +1202,19 @@ Deno.serve(async (req: Request) => {
       }
 
       const clockInTime = new Date(openLog.clock_in_time);
-      const durationMinutes =
+      const rawMinutes =
         Math.round((now.getTime() - clockInTime.getTime()) / 60000);
+      const maxH = await getAutoClockOutHours(supabase);
+      const maxM = maxH * 60;
+      const durationMinutes = Math.min(rawMinutes, maxM);
+      const effectiveClockOut = rawMinutes > maxM
+        ? new Date(clockInTime.getTime() + maxM * 60 * 1000)
+        : now;
 
       await supabase
         .from("clock_logs")
         .update({
-          clock_out_time: toESTISO(now),
+          clock_out_time: toESTISO(effectiveClockOut),
           duration_minutes: durationMinutes,
         })
         .eq("id", openLog.id);
@@ -1752,6 +1878,13 @@ Deno.serve(async (req: Request) => {
         .eq("id", resetToken.id);
 
       return json({ success: true, message: "Password updated successfully" });
+    }
+
+    // --- AUTO CLOCK-OUT CRON (closes stale shifts exceeding max hours) ---
+    if (req.method === "POST" && path === "/auto-clock-out") {
+      const maxHours = await getAutoClockOutHours(supabase);
+      const closed = await autoCloseStaleShifts(supabase, maxHours);
+      return json({ success: true, message: `Auto-closed ${closed} stale shift(s)`, closed, max_hours: maxHours });
     }
 
     return json({ success: false, message: "Not found" }, 404);
