@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { MessageSquare, CheckCircle, Clock, AlertTriangle, XCircle, FileText, RefreshCw, Radio, ChevronRight, ArrowLeft, Pencil, Save, X } from 'lucide-react';
+import { MessageSquare, CheckCircle, Clock, AlertTriangle, XCircle, FileText, RefreshCw, Radio, ChevronRight, ArrowLeft, Pencil, Save, X, Send, Users, Check } from 'lucide-react';
 import { callTimecardFunction } from '../lib/supabase';
 import { supabase } from '../lib/supabase';
+import { formatHM, formatHMFromHours } from '../lib/formatTime';
 
 interface ShiftNote {
   id: string;
@@ -93,7 +94,7 @@ function formatTimeEST(isoStr: string): string {
 
 function formatDecimalHours(mins: number): string {
   if (mins <= 0) return '';
-  return (mins / 60).toFixed(2);
+  return formatHM(mins);
 }
 
 function formatDateShort(dateStr: string): string {
@@ -162,10 +163,10 @@ function buildWeekBlocks(detail: ReportDetail): WeekBlock[] {
 
       let netMinutes = 0;
       if (shift) {
+        const lunchMin = dayBreaks.filter(b => b.break_type === 'lunch').reduce((s, b) => s + (b.duration_minutes || 0), 0);
         if (correction) {
-          netMinutes = correction.proposed_duration_minutes;
+          netMinutes = Math.max(0, (correction.proposed_duration_minutes || 0) - lunchMin);
         } else {
-          const lunchMin = dayBreaks.filter(b => b.break_type === 'lunch').reduce((s, b) => s + (b.duration_minutes || 0), 0);
           netMinutes = Math.max(0, (shift.duration_minutes || 0) - lunchMin);
         }
       }
@@ -247,6 +248,13 @@ export function TimecardReview() {
   const [editNote, setEditNote] = useState('');
   const [savingCorrection, setSavingCorrection] = useState(false);
 
+  // Send timecards modal state
+  const [showSendModal, setShowSendModal] = useState(false);
+  const [staffList, setStaffList] = useState<{ id: string; name: string; email: string }[]>([]);
+  const [selectedStaffIds, setSelectedStaffIds] = useState<string[]>([]);
+  const [regenerateExisting, setRegenerateExisting] = useState(true);
+  const [loadingStaff, setLoadingStaff] = useState(false);
+
   useEffect(() => {
     loadReports();
     pollRef.current = window.setInterval(loadReports, 30000);
@@ -291,10 +299,30 @@ export function TimecardReview() {
     await loadReports();
   }
 
+  async function openSendModal() {
+    setShowSendModal(true);
+    setLoadingStaff(true);
+    const { data } = await supabase.from('staff').select('id, name, email').eq('is_active', true).order('name');
+    setStaffList(data || []);
+    setSelectedStaffIds((data || []).map(s => s.id));
+    setLoadingStaff(false);
+  }
+
+  function toggleStaff(id: string) {
+    setSelectedStaffIds(prev =>
+      prev.includes(id) ? prev.filter(s => s !== id) : [...prev, id]
+    );
+  }
+
   async function handleGenerate() {
     setGenerating(true);
+    setShowSendModal(false);
     const token = await getAuthToken();
-    const result = await callTimecardFunction('/generate', { body: {}, authToken: token });
+    const body: Record<string, unknown> = { regenerate: regenerateExisting };
+    if (selectedStaffIds.length < staffList.length) {
+      body.staff_ids = selectedStaffIds;
+    }
+    const result = await callTimecardFunction('/generate', { body, authToken: token });
     setGenerating(false);
     setToast(result.success ? `Sent ${result.reports_generated} timecard(s) for approval` : (result.message || 'Failed'));
     setTimeout(() => setToast(null), 4000);
@@ -488,7 +516,7 @@ export function TimecardReview() {
           <div className="bg-white rounded-xl border border-gray-100 p-4">
             <p className="text-[11px] text-orange-500 font-semibold uppercase tracking-wide">Overtime</p>
             <p className={`text-2xl font-bold mt-1 ${periodOT > 0 ? 'text-orange-500' : 'text-gray-300'}`}>
-              {formatDecimalHours(periodOT) || '0.00'}
+              {formatDecimalHours(periodOT) || '0:00'}
             </p>
           </div>
           <div className="bg-white rounded-xl border border-gray-100 p-4">
@@ -645,7 +673,7 @@ export function TimecardReview() {
             <CheckCircle className="w-10 h-10 text-green-500 mx-auto mb-3" />
             <p className="font-bold text-gray-800 mb-1">Approve & Send Final Hours</p>
             <p className="text-sm text-gray-500 mb-4">
-              This will finalize the timecard ({(periodTotal / 60).toFixed(1)}h) and email the confirmed hours to {report.staff_name.split(' ')[0]}.
+              This will finalize the timecard ({formatHM(periodTotal)}) and email the confirmed hours to {report.staff_name.split(' ')[0]}.
             </p>
             <button
               onClick={() => handleAdminApprove(report.id)}
@@ -687,7 +715,7 @@ export function TimecardReview() {
                   <p className="text-sm font-medium text-gray-700">
                     {formatTimeEST(editingShift.clock_in_time)} - {editingShift.clock_out_time ? formatTimeEST(editingShift.clock_out_time) : 'open'}
                     {editingShift.duration_minutes && (
-                      <span className="text-gray-400 ml-2">({(editingShift.duration_minutes / 60).toFixed(2)}h)</span>
+                      <span className="text-gray-400 ml-2">({formatHM(editingShift.duration_minutes)})</span>
                     )}
                   </p>
                 </div>
@@ -779,17 +807,17 @@ export function TimecardReview() {
                       <div className="flex items-center justify-between">
                         <span className="text-xs text-blue-600 font-medium">Net shift hours:</span>
                         <span className="text-sm font-bold text-blue-700">
-                          {(newMins / 60).toFixed(2)}h
-                          {lunchDeduction > 0 && <span className="text-[10px] text-gray-400 ml-1">(gross {(grossMins / 60).toFixed(2)} - lunch {(lunchDeduction / 60).toFixed(2)})</span>}
+                          {formatHM(newMins)}
+                          {lunchDeduction > 0 && <span className="text-[10px] text-gray-400 ml-1">(gross {formatHM(grossMins)} - lunch {formatHM(lunchDeduction)})</span>}
                         </span>
                       </div>
                       <div className="flex items-center justify-between border-t border-blue-100 pt-1.5">
                         <span className="text-xs text-blue-600 font-medium">New period total:</span>
                         <span className="text-sm font-bold text-blue-800">
-                          {(newPeriodTotal / 60).toFixed(2)}h
+                          {formatHM(newPeriodTotal)}
                           {diff !== 0 && (
                             <span className={`ml-1.5 text-[11px] ${diff > 0 ? 'text-green-600' : 'text-red-500'}`}>
-                              ({diff > 0 ? '+' : ''}{(diff / 60).toFixed(2)}h)
+                              ({diff > 0 ? '+' : ''}{formatHM(Math.abs(diff))})
                             </span>
                           )}
                         </span>
@@ -859,12 +887,12 @@ export function TimecardReview() {
             <RefreshCw className="w-4 h-4" />
           </button>
           <button
-            onClick={handleGenerate}
+            onClick={openSendModal}
             disabled={generating}
             className="inline-flex items-center gap-2 px-4 py-2 bg-moja-orange text-white text-sm font-bold rounded-lg hover:bg-moja-orange/90 active:scale-[0.98] transition-all disabled:opacity-50"
           >
-            {generating ? <RefreshCw className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
-            Send Manual Timecards
+            {generating ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+            Send Timecards
           </button>
         </div>
       </div>
@@ -936,9 +964,9 @@ export function TimecardReview() {
                     </p>
                   </div>
                   <div className="text-right flex-shrink-0">
-                    <p className="text-lg font-bold text-moja-blue">{liveHours.toFixed(1)}h</p>
+                    <p className="text-lg font-bold text-moja-blue">{formatHMFromHours(liveHours)}</p>
                     {report.overtime_hours > 0 && (
-                      <span className="text-xs text-orange-500 font-semibold">+{report.overtime_hours.toFixed(1)} OT</span>
+                      <span className="text-xs text-orange-500 font-semibold">+{formatHMFromHours(report.overtime_hours)} OT</span>
                     )}
                   </div>
                   <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-moja-blue transition-colors flex-shrink-0" />
@@ -958,6 +986,103 @@ export function TimecardReview() {
       {loadingDetail && (
         <div className="fixed inset-0 bg-black/20 flex items-center justify-center z-50">
           <div className="w-10 h-10 border-3 border-moja-orange border-t-transparent rounded-full animate-spin" />
+        </div>
+      )}
+
+      {showSendModal && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setShowSendModal(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="bg-moja-blue p-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-white font-bold text-lg">Send Timecards</h3>
+                  <p className="text-white/60 text-sm">Select which staff to send timecards to</p>
+                </div>
+                <button onClick={() => setShowSendModal(false)} className="p-2 text-white/50 hover:text-white rounded-lg transition-colors">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+            <div className="p-5 space-y-4">
+              {loadingStaff ? (
+                <div className="flex items-center justify-center py-8">
+                  <div className="w-6 h-6 border-2 border-moja-blue border-t-transparent rounded-full animate-spin" />
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between">
+                    <button
+                      onClick={() => setSelectedStaffIds(
+                        selectedStaffIds.length === staffList.length ? [] : staffList.map(s => s.id)
+                      )}
+                      className="text-xs font-bold text-moja-blue hover:text-moja-orange transition-colors"
+                    >
+                      {selectedStaffIds.length === staffList.length ? 'Deselect All' : 'Select All'}
+                    </button>
+                    <span className="text-xs text-gray-400 font-medium">
+                      {selectedStaffIds.length} of {staffList.length} selected
+                    </span>
+                  </div>
+                  <div className="max-h-64 overflow-y-auto space-y-1 border border-gray-100 rounded-xl p-2">
+                    {staffList.map(staff => (
+                      <button
+                        key={staff.id}
+                        onClick={() => toggleStaff(staff.id)}
+                        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all ${
+                          selectedStaffIds.includes(staff.id)
+                            ? 'bg-blue-50 border border-blue-200'
+                            : 'hover:bg-gray-50 border border-transparent'
+                        }`}
+                      >
+                        <div className={`w-5 h-5 rounded flex-shrink-0 flex items-center justify-center border-2 transition-all ${
+                          selectedStaffIds.includes(staff.id)
+                            ? 'bg-moja-blue border-moja-blue'
+                            : 'border-gray-300'
+                        }`}>
+                          {selectedStaffIds.includes(staff.id) && <Check className="w-3 h-3 text-white" />}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="font-semibold text-sm text-gray-800 truncate">{staff.name}</p>
+                          <p className="text-xs text-gray-400 truncate">{staff.email}</p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                  <label className="flex items-center gap-3 px-3 py-3 bg-amber-50 border border-amber-200 rounded-xl cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={regenerateExisting}
+                      onChange={e => setRegenerateExisting(e.target.checked)}
+                      className="w-4 h-4 rounded border-gray-300 text-moja-blue focus:ring-moja-blue"
+                    />
+                    <div>
+                      <p className="text-sm font-semibold text-gray-800">Re-send existing timecards</p>
+                      <p className="text-xs text-gray-500">Regenerate and re-email staff who already received one</p>
+                    </div>
+                  </label>
+                </>
+              )}
+              <div className="flex gap-2 pt-2">
+                <button
+                  onClick={handleGenerate}
+                  disabled={selectedStaffIds.length === 0 || generating}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-moja-orange text-white font-bold rounded-xl hover:bg-moja-orange/90 disabled:opacity-40 transition-all"
+                >
+                  {generating ? (
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <><Send className="w-4 h-4" /> Send to {selectedStaffIds.length} Staff</>
+                  )}
+                </button>
+                <button
+                  onClick={() => setShowSendModal(false)}
+                  className="px-4 py-3 text-gray-500 font-bold rounded-xl hover:bg-gray-100 transition-all"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import type { Staff, ClockLog, BreakLog } from '../lib/types';
 import { Download, Calendar, ArrowUpDown, BarChart3, CalendarRange, X, Loader2 } from 'lucide-react';
+import { formatHM } from '../lib/formatTime';
 
 function getWeekDates(date: Date): { start: Date; end: Date } {
   const d = new Date(date);
@@ -22,17 +23,9 @@ function formatDate(d: Date): string {
 
 const DAY_NAMES = ['Sat', 'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
 
-function formatHM(decimalHours: number): string {
-  if (decimalHours <= 0) return '-';
-  const totalMinutes = Math.round(decimalHours * 60);
-  const h = Math.floor(totalMinutes / 60);
-  const m = totalMinutes % 60;
-  return `${h}h ${m.toString().padStart(2, '0')}m`;
-}
-
 function formatDec(mins: number): string {
   if (mins <= 0) return '-';
-  return (mins / 60).toFixed(2);
+  return formatHM(mins);
 }
 
 function HoursBarChart({ data }: { data: { name: string; hours: number }[] }) {
@@ -43,7 +36,7 @@ function HoursBarChart({ data }: { data: { name: string; hours: number }[] }) {
       {data.map((d, i) => (
         <div key={i} className="flex-1 flex flex-col items-center gap-1">
           <span className="text-xs font-bold text-moja-blue/50 font-mono">
-            {d.hours > 0 ? d.hours.toFixed(2) : ''}
+            {d.hours > 0 ? formatHM(d.hours * 60) : ''}
           </span>
           <div
             className="w-full rounded-t-md bg-moja-aqua/70 transition-all duration-500 min-h-[2px]"
@@ -78,6 +71,7 @@ export function WeeklyReports() {
   const [staffList, setStaffList] = useState<Staff[]>([]);
   const [logs, setLogs] = useState<ClockLog[]>([]);
   const [breakLogs, setBreakLogs] = useState<BreakLog[]>([]);
+  const [corrections, setCorrections] = useState<{ clock_log_id: string; proposed_duration_minutes: number }[]>([]);
   const [filterStaff, setFilterStaff] = useState('');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [loading, setLoading] = useState(false);
@@ -118,7 +112,7 @@ export function WeeklyReports() {
     const weekStart = new Date(weekOf);
     const { end } = getWeekDates(weekStart);
 
-    const [staffRes, logsRes, breaksRes] = await Promise.all([
+    const [staffRes, logsRes, breaksRes, correctionsRes] = await Promise.all([
       supabase.from('staff').select('*').order('name'),
       supabase
         .from('clock_logs')
@@ -131,17 +125,25 @@ export function WeeklyReports() {
         .select('*')
         .gte('break_start', weekStart.toISOString())
         .lte('break_start', end.toISOString()),
+      supabase
+        .from('timecard_corrections')
+        .select('clock_log_id, proposed_duration_minutes')
+        .eq('approval_status', 'approved')
+        .not('clock_log_id', 'is', null),
     ]);
 
     if (staffRes.data) setStaffList(staffRes.data);
     if (logsRes.data) setLogs(logsRes.data);
     if (breaksRes.data) setBreakLogs(breaksRes.data);
+    if (correctionsRes.data) setCorrections(correctionsRes.data);
     setLoading(false);
   }
 
   function getStaffWeekData() {
     let filtered = staffList.filter(s => s.is_active || logs.some(l => l.staff_id === s.id));
     if (filterStaff) filtered = filtered.filter(s => s.id === filterStaff);
+
+    const corrMap = new Map(corrections.map(c => [c.clock_log_id, c.proposed_duration_minutes]));
 
     const data = filtered.map(staff => {
       const staffLogs = logs.filter(l => l.staff_id === staff.id);
@@ -157,7 +159,12 @@ export function WeeklyReports() {
           const rawMins = (new Date(log.clock_out_time).getTime() - logDate.getTime()) / 60000;
           dailyRaw[dayIndex] += rawMins;
         }
-        if (log.duration_minutes) {
+        if (corrMap.has(log.id)) {
+          const logLunchMins = breakLogs
+            .filter(b => b.clock_log_id === log.id && b.break_type === 'lunch')
+            .reduce((s, b) => s + (b.duration_minutes || 0), 0);
+          dailyFinal[dayIndex] += Math.max(0, (corrMap.get(log.id) || 0) - logLunchMins);
+        } else if (log.duration_minutes) {
           const logLunchMins = breakLogs
             .filter(b => b.clock_log_id === log.id && b.break_type === 'lunch')
             .reduce((s, b) => s + (b.duration_minutes || 0), 0);
@@ -191,7 +198,7 @@ export function WeeklyReports() {
       const endDate = new Date(rangeEnd);
       endDate.setHours(23, 59, 59, 999);
 
-      const [staffRes, logsRes, breaksRes] = await Promise.all([
+      const [staffRes, logsRes, breaksRes, corrRes] = await Promise.all([
         supabase.from('staff').select('*').order('name'),
         supabase
           .from('clock_logs')
@@ -204,11 +211,17 @@ export function WeeklyReports() {
           .select('*')
           .gte('break_start', startDate.toISOString())
           .lte('break_start', endDate.toISOString()),
+        supabase
+          .from('timecard_corrections')
+          .select('clock_log_id, proposed_duration_minutes')
+          .eq('approval_status', 'approved')
+          .not('clock_log_id', 'is', null),
       ]);
 
       const allStaff: Staff[] = staffRes.data || [];
       let rangeLogs: ClockLog[] = logsRes.data || [];
       const rangeBreaks: BreakLog[] = breaksRes.data || [];
+      const rangeCorrMap = new Map((corrRes.data || []).map((c: { clock_log_id: string; proposed_duration_minutes: number }) => [c.clock_log_id, c.proposed_duration_minutes]));
 
       if (rangeStaff) {
         rangeLogs = rangeLogs.filter(l => l.staff_id === rangeStaff);
@@ -271,7 +284,9 @@ export function WeeklyReports() {
               .filter(b => b.break_type === 'lunch')
               .reduce((sum, b) => sum + (b.duration_minutes || 0), 0);
 
-            const finalMinutes = log.duration_minutes ? Math.max(0, log.duration_minutes - lunchMins) : 0;
+            const finalMinutes = rangeCorrMap.has(log.id)
+              ? Math.max(0, (rangeCorrMap.get(log.id) || 0) - lunchMins)
+              : (log.duration_minutes ? Math.max(0, log.duration_minutes - lunchMins) : 0);
             weekTotal += finalMinutes;
             staffTotalRaw += rawMinutes;
 
@@ -280,10 +295,10 @@ export function WeeklyReports() {
               formatDate(clockIn),
               clockIn.toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: true }),
               clockOut ? clockOut.toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: true }) : 'In Progress',
-              rawMinutes > 0 ? (rawMinutes / 60).toFixed(2) : '-',
+              rawMinutes > 0 ? formatHM(rawMinutes) : '-',
               breakMins > 0 ? `${breakMins}m` : '',
               lunchMins > 0 ? `${lunchMins}m` : '',
-              finalMinutes > 0 ? (finalMinutes / 60).toFixed(2) : '-',
+              finalMinutes > 0 ? formatHM(finalMinutes) : '-',
               '',
               formatDate(weekEnd),
               log.notes || '',
@@ -296,7 +311,7 @@ export function WeeklyReports() {
 
           // Mark overtime on last entry of the week
           if (weekOvertime > 0 && weekLogs.length > 0) {
-            rows[rows.length - 1][8] = (weekOvertime / 60).toFixed(2);
+            rows[rows.length - 1][8] = formatHM(weekOvertime);
           }
         });
 
@@ -306,11 +321,11 @@ export function WeeklyReports() {
           '',
           '',
           '',
-          staffTotalRaw > 0 ? (staffTotalRaw / 60).toFixed(2) : '-',
+          staffTotalRaw > 0 ? formatHM(staffTotalRaw) : '-',
           '',
           '',
-          staffTotalHours > 0 ? (staffTotalHours / 60).toFixed(2) : '-',
-          staffTotalOvertime > 0 ? (staffTotalOvertime / 60).toFixed(2) : '-',
+          staffTotalHours > 0 ? formatHM(staffTotalHours) : '-',
+          staffTotalOvertime > 0 ? formatHM(staffTotalOvertime) : '-',
           '',
           '',
         ]);
@@ -327,11 +342,11 @@ export function WeeklyReports() {
         `${rangeStart} to ${rangeEnd}`,
         '',
         '',
-        grandTotalRaw > 0 ? (grandTotalRaw / 60).toFixed(2) : '-',
+        grandTotalRaw > 0 ? formatHM(grandTotalRaw) : '-',
         '',
         '',
-        grandTotalHours > 0 ? (grandTotalHours / 60).toFixed(2) : '-',
-        grandTotalOvertime > 0 ? (grandTotalOvertime / 60).toFixed(2) : '-',
+        grandTotalHours > 0 ? formatHM(grandTotalHours) : '-',
+        grandTotalOvertime > 0 ? formatHM(grandTotalOvertime) : '-',
         '',
         '',
       ]);

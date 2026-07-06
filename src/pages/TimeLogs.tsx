@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase';
 import type { Staff, ClockLog } from '../lib/types';
 import { Edit3, Plus, Trash2, X, History } from 'lucide-react';
 import { Toast } from '../components/Toast';
+import { formatHM } from '../lib/formatTime';
 
 export function TimeLogs() {
   const [staffList, setStaffList] = useState<Staff[]>([]);
@@ -233,7 +234,7 @@ export function TimeLogs() {
                   </td>
                   <td className="px-4 py-3 text-center text-sm font-bold text-moja-blue/60 font-mono">
                     {log.duration_minutes != null
-                      ? (log.duration_minutes / 60).toFixed(2)
+                      ? formatHM(log.duration_minutes)
                       : '-'
                     }
                   </td>

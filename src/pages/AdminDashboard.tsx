@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase';
 import type { Staff, ClockLog } from '../lib/types';
 import { Users, Clock, UserCheck, UserX, AlertTriangle, LogOut } from 'lucide-react';
 import { Toast } from '../components/Toast';
+import { formatHM } from '../lib/formatTime';
 
 function ElapsedTimer({ clockInTime }: { clockInTime: string }) {
   const [elapsed, setElapsed] = useState('');
@@ -270,7 +271,7 @@ export function AdminDashboard() {
                   )}
                   {log.duration_minutes != null && (
                     <span className="text-sm font-bold text-moja-blue/50 font-mono">
-                      {(log.duration_minutes / 60).toFixed(2)}
+                      {formatHM(log.duration_minutes)}
                     </span>
                   )}
                   {!log.clock_out_time && (

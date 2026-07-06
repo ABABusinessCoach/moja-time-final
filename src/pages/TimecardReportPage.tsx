@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Clock, AlertTriangle, CheckCircle, MessageSquare, Send, Pencil, Trash2, ArrowLeft, ThumbsUp, ShieldCheck, Lock, Save, X, XCircle } from 'lucide-react';
 import { callTimecardFunction } from '../lib/supabase';
 import { BrandAccents } from '../components/BrandAccents';
+import { formatHM, formatHMFromHours } from '../lib/formatTime';
 
 interface Shift {
   id: string;
@@ -98,7 +99,7 @@ function formatMinsToHours(mins: number): string {
 
 function formatDecimalHours(mins: number): string {
   if (mins <= 0) return '';
-  return (mins / 60).toFixed(2);
+  return formatHM(mins);
 }
 
 function getShiftDateKey(isoStr: string): string {
@@ -372,10 +373,10 @@ export function TimecardReportPage({ token }: { token: string }) {
 
         let netMinutes = 0;
         if (shift) {
+          const lunchMin = dayBreaks.filter(b => b.break_type === 'lunch').reduce((s, b) => s + (b.duration_minutes || 0), 0);
           if (correction) {
-            netMinutes = correction.proposed_duration_minutes;
+            netMinutes = Math.max(0, (correction.proposed_duration_minutes || 0) - lunchMin);
           } else {
-            const lunchMin = dayBreaks.filter(b => b.break_type === 'lunch').reduce((s, b) => s + (b.duration_minutes || 0), 0);
             netMinutes = Math.max(0, (shift.duration_minutes || 0) - lunchMin);
           }
         }
@@ -677,7 +678,7 @@ export function TimecardReportPage({ token }: { token: string }) {
           <div className="bg-green-50 border-2 border-green-200 rounded-xl p-5 text-center">
             <CheckCircle className="w-8 h-8 text-green-500 mx-auto mb-2" />
             <p className="font-bold text-green-800">This timecard has been fully approved</p>
-            <p className="text-sm text-green-700 mt-1">Your final hours: <span className="font-bold">{report.total_hours.toFixed(1)}h</span></p>
+            <p className="text-sm text-green-700 mt-1">Your final hours: <span className="font-bold">{formatHMFromHours(report.total_hours)}</span></p>
             {report.admin_approved_at && (
               <p className="text-xs text-green-600 mt-1">
                 Manager approved on {new Date(report.admin_approved_at).toLocaleDateString('en-US', {
@@ -739,7 +740,7 @@ export function TimecardReportPage({ token }: { token: string }) {
                 <p className="text-sm font-medium text-gray-700">
                   {formatTimeEST(editingShift.clock_in_time)} - {editingShift.clock_out_time ? formatTimeEST(editingShift.clock_out_time) : 'open'}
                   {editingShift.duration_minutes && (
-                    <span className="text-gray-400 ml-2">({(editingShift.duration_minutes / 60).toFixed(2)}h)</span>
+                    <span className="text-gray-400 ml-2">({formatHM(editingShift.duration_minutes)})</span>
                   )}
                 </p>
               </div>
@@ -783,13 +784,13 @@ export function TimecardReportPage({ token }: { token: string }) {
                       <div className="bg-blue-50 rounded-lg p-3 space-y-1.5 mt-3">
                         <div className="flex items-center justify-between">
                           <span className="text-xs text-blue-600 font-medium">Proposed hours:</span>
-                          <span className="text-sm font-bold text-blue-700">{Number(editHours).toFixed(2)}h</span>
+                          <span className="text-sm font-bold text-blue-700">{formatHM(Number(editHours) * 60)}</span>
                         </div>
                         {diff !== 0 && (
                           <div className="flex items-center justify-between border-t border-blue-100 pt-1.5">
                             <span className="text-xs text-blue-600 font-medium">Difference:</span>
                             <span className={`text-sm font-bold ${diff > 0 ? 'text-green-600' : 'text-red-500'}`}>
-                              {diff > 0 ? '+' : ''}{(diff / 60).toFixed(2)}h
+                              {diff > 0 ? '+' : ''}{formatHM(Math.abs(diff))}
                             </span>
                           </div>
                         )}
@@ -827,7 +828,7 @@ export function TimecardReportPage({ token }: { token: string }) {
                       <div className="bg-blue-50 rounded-lg p-3">
                         <div className="flex items-center justify-between">
                           <span className="text-xs text-blue-600 font-medium">Updated shift hours:</span>
-                          <span className="text-sm font-bold text-blue-700">{(newMins / 60).toFixed(2)}h</span>
+                          <span className="text-sm font-bold text-blue-700">{formatHM(newMins)}</span>
                         </div>
                       </div>
                     );

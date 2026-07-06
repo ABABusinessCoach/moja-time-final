@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { callEdgeFunction } from '../lib/supabase';
 import { ArrowLeft, Clock, Coffee, TrendingUp, Calendar } from 'lucide-react';
 import { BrandAccents, BrandDots } from '../components/BrandAccents';
+import { formatHM, formatHMFromHours } from '../lib/formatTime';
 
 interface HoursLog {
   id: string;
@@ -79,8 +80,8 @@ export function MyHoursPage() {
   }
 
   function formatDuration(mins: number): string {
-    if (mins <= 0) return '0.00';
-    return (mins / 60).toFixed(2);
+    if (mins <= 0) return '0:00';
+    return formatHM(mins);
   }
 
   function formatShortDate(dateStr: string): string {
