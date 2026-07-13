@@ -14,6 +14,10 @@ import { InstallPrompt } from './components/InstallPrompt';
 import { BugReportButton } from './components/BugReportButton';
 
 function getRoute(): { page: string; params: Record<string, string> } {
+  const pathname = window.location.pathname;
+  if (pathname === '/signup') {
+    return { page: 'signup', params: {} };
+  }
   const hash = window.location.hash.slice(1) || '/';
   if (hash.startsWith('/register/')) {
     return { page: 'register', params: { token: hash.replace('/register/', '') } };

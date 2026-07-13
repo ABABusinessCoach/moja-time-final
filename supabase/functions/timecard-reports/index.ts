@@ -29,6 +29,17 @@ function formatDateEST(date: Date): string {
   return `${y}-${m}-${d}`;
 }
 
+function getWeekEnding(date: Date): string {
+  const est = toEST(date);
+  const day = est.getDay();
+  const diff = day === 0 ? 0 : 7 - day;
+  est.setDate(est.getDate() + diff);
+  const y = est.getFullYear();
+  const m = String(est.getMonth() + 1).padStart(2, "0");
+  const dd = String(est.getDate()).padStart(2, "0");
+  return `${y}-${m}-${dd}`;
+}
+
 function getPayPeriodForDate(date: Date): { start: string; end: string } {
   // Reference: Saturday June 27 2026 is a known period start
   const refDate = new Date("2026-06-27T00:00:00");
@@ -367,12 +378,15 @@ Deno.serve(async (req: Request) => {
 
     // --- GENERATE REPORTS (manual or cron-forwarded) ---
     if (req.method === "POST" && (path === "/generate" || path === "/cron-generate")) {
-      const { end_date_override, staff_ids, regenerate } = await req.json().catch(() => ({}));
+      const { end_date_override, staff_ids, regenerate, period_start, period_end } = await req.json().catch(() => ({}));
 
       let periodStart: string;
       let periodEnd: string;
 
-      if (end_date_override) {
+      if (period_start && period_end) {
+        periodStart = period_start;
+        periodEnd = period_end;
+      } else if (end_date_override) {
         const overrideDate = new Date(end_date_override + "T00:00:00");
         const pp = getPayPeriodForDate(overrideDate);
         periodStart = pp.start;
@@ -1113,6 +1127,7 @@ Deno.serve(async (req: Request) => {
           clock_in_time: clockIn,
           clock_out_time: clockOut,
           duration_minutes: durationMins,
+          week_ending: getWeekEnding(new Date(clockIn)),
           notes: `[Manual entry] ${note.trim()}`,
         })
         .select("id")
@@ -1217,6 +1232,7 @@ Deno.serve(async (req: Request) => {
           clock_in_time: clockIn,
           clock_out_time: clockOut,
           duration_minutes: durationMins,
+          week_ending: getWeekEnding(new Date(clockIn)),
           notes: note?.trim() ? `[Admin entry] ${note.trim()}` : "[Admin entry]",
         })
         .select("id")
@@ -1634,7 +1650,10 @@ Deno.serve(async (req: Request) => {
       const authHeader = req.headers.get("Authorization")?.replace("Bearer ", "");
       if (!authHeader) return json({ success: false, message: "Unauthorized" }, 401);
 
-      const { data: { user } } = await createClient(supabaseUrl, authHeader).auth.getUser();
+      const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+      const { data: { user } } = await createClient(supabaseUrl, anonKey, {
+        global: { headers: { Authorization: `Bearer ${authHeader}` } }
+      }).auth.getUser();
       if (!user) return json({ success: false, message: "Unauthorized" }, 401);
 
       // Verify admin
@@ -1650,12 +1669,10 @@ Deno.serve(async (req: Request) => {
         return json({ success: false, message: "note_id and action required" }, 400);
       }
 
-      const newStatus = action === "dismiss" ? "resolved" : "resolved";
-
       const { error } = await supabase
         .from("shift_notes")
         .update({
-          status: newStatus,
+          status: "resolved",
           resolution_comment: resolution_comment?.trim() || (action === "dismiss" ? "Dismissed by manager" : null),
           resolved_at: new Date().toISOString(),
           resolved_by: user.id,
@@ -1680,9 +1697,11 @@ Deno.serve(async (req: Request) => {
           .neq("status", "resolved");
 
         if (!openNotes || openNotes.length === 0) {
+          // Revert to pending_review so normal approval flow continues
+          // (employee approves -> admin approves -> final email sent)
           await supabase
             .from("timecard_reports")
-            .update({ status: "approved", approved_at: new Date().toISOString() })
+            .update({ status: "pending_review" })
             .eq("id", noteData.timecard_report_id);
         }
       }

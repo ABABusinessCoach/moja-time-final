@@ -233,7 +233,7 @@ export function WeeklyReports() {
       });
 
       const rows: string[][] = [
-        ['Employee Name', 'Date', 'Clock In', 'Clock Out', 'Raw Time', 'Break', 'Lunch', 'Final Hours', 'Overtime', 'Week Ending', 'Notes'],
+        ['Employee Name', 'Employee #', 'Date', 'Clock In', 'Clock Out', 'Raw Time', 'Break', 'Lunch', 'Final Hours', 'Overtime', 'Week Ending', 'Notes'],
       ];
 
       let grandTotalRaw = 0;
@@ -288,6 +288,7 @@ export function WeeklyReports() {
 
             rows.push([
               staff.name,
+              staff.employee_number || '',
               formatDate(clockIn),
               clockIn.toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: true }),
               clockOut ? clockOut.toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: true }) : 'In Progress',
@@ -307,13 +308,14 @@ export function WeeklyReports() {
 
           // Mark overtime on last entry of the week
           if (weekOvertime > 0 && weekLogs.length > 0) {
-            rows[rows.length - 1][8] = formatHM(weekOvertime);
+            rows[rows.length - 1][9] = formatHM(weekOvertime);
           }
         });
 
         // Staff subtotal row
         rows.push([
           `--- ${staff.name} TOTAL ---`,
+          staff.employee_number || '',
           '',
           '',
           '',
@@ -325,7 +327,7 @@ export function WeeklyReports() {
           '',
           '',
         ]);
-        rows.push(['', '', '', '', '', '', '', '', '', '', '']);
+        rows.push(['', '', '', '', '', '', '', '', '', '', '', '']);
 
         grandTotalRaw += staffTotalRaw;
         grandTotalHours += staffTotalHours;
@@ -335,6 +337,7 @@ export function WeeklyReports() {
       // Grand total
       rows.push([
         '=== GRAND TOTAL ===',
+        '',
         `${rangeStart} to ${rangeEnd}`,
         '',
         '',
@@ -347,7 +350,10 @@ export function WeeklyReports() {
         '',
       ]);
 
-      const csv = rows.map(r => r.map(c => `"${c}"`).join(',')).join('\n');
+      const csv = rows.map((r, ri) => r.map((c, ci) => {
+        if (ri > 0 && ci === 1 && c) return `="${c}"`;
+        return `"${c}"`;
+      }).join(',')).join('\n');
       const filename = `moja_timesheet_${rangeStart.replace(/-/g, '')}_to_${rangeEnd.replace(/-/g, '')}.csv`;
       downloadBlob(csv, filename);
     } finally {

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { MessageSquare, CheckCircle, Clock, AlertTriangle, XCircle, FileText, RefreshCw, Radio, ChevronRight, ArrowLeft, Pencil, Save, X, Send, Users, Check } from 'lucide-react';
 import { callTimecardFunction } from '../lib/supabase';
 import { supabase } from '../lib/supabase';
+import { getPayPeriodForDate } from '../lib/payPeriod';
 import { formatHM, formatHMFromHours } from '../lib/formatTime';
 
 interface ShiftNote {
@@ -274,6 +275,7 @@ export function TimecardReview() {
   const [selectedStaffIds, setSelectedStaffIds] = useState<string[]>([]);
   const [regenerateExisting, setRegenerateExisting] = useState(true);
   const [loadingStaff, setLoadingStaff] = useState(false);
+  const [sendPeriod, setSendPeriod] = useState<'current' | 'previous'>('current');
 
   useEffect(() => {
     loadReports();
@@ -338,7 +340,12 @@ export function TimecardReview() {
     setGenerating(true);
     setShowSendModal(false);
     const token = await getAuthToken();
-    const body: Record<string, unknown> = { regenerate: regenerateExisting };
+    const selectedPeriod = sendPeriod === 'current' ? currentPeriod : previousPeriod;
+    const body: Record<string, unknown> = {
+      regenerate: regenerateExisting,
+      period_start: selectedPeriod.start,
+      period_end: selectedPeriod.end,
+    };
     if (selectedStaffIds.length < staffList.length) {
       body.staff_ids = selectedStaffIds;
     }
@@ -1017,18 +1024,13 @@ export function TimecardReview() {
   }
 
   // === LIST VIEW ===
-  // Determine unique pay periods from all reports
-  const allCombinedReports = [...reports, ...allReports];
-  const periodKeys = new Map<string, { start_date: string; end_date: string }>();
-  allCombinedReports.forEach(r => {
-    if (r.pay_periods) {
-      const key = r.pay_periods.start_date;
-      if (!periodKeys.has(key)) periodKeys.set(key, r.pay_periods);
-    }
-  });
-  const sortedPeriods = [...periodKeys.entries()].sort((a, b) => b[0].localeCompare(a[0]));
-  const currentPeriodKey = sortedPeriods[0]?.[0] || null;
-  const previousPeriodKey = sortedPeriods[1]?.[0] || null;
+  // Calculate current and previous pay periods from the pay period utility
+  const currentPeriod = getPayPeriodForDate(new Date());
+  const prevDate = new Date();
+  prevDate.setDate(prevDate.getDate() - 14);
+  const previousPeriod = getPayPeriodForDate(prevDate);
+  const currentPeriodKey = currentPeriod.start;
+  const previousPeriodKey = previousPeriod.start;
 
   function filterByPeriod(list: Report[]): Report[] {
     const targetKey = periodFilter === 'current' ? currentPeriodKey : previousPeriodKey;
@@ -1038,12 +1040,8 @@ export function TimecardReview() {
 
   const baseReports = view === 'pending' ? reports : allReports;
   const displayReports = filterByPeriod(baseReports);
-  const currentPeriodLabel = currentPeriodKey && periodKeys.get(currentPeriodKey)
-    ? `${formatDate(periodKeys.get(currentPeriodKey)!.start_date)} - ${formatDate(periodKeys.get(currentPeriodKey)!.end_date)}`
-    : '';
-  const previousPeriodLabel = previousPeriodKey && periodKeys.get(previousPeriodKey)
-    ? `${formatDate(periodKeys.get(previousPeriodKey)!.start_date)} - ${formatDate(periodKeys.get(previousPeriodKey)!.end_date)}`
-    : '';
+  const currentPeriodLabel = `${formatDate(currentPeriod.start)} - ${formatDate(currentPeriod.end)}`;
+  const previousPeriodLabel = `${formatDate(previousPeriod.start)} - ${formatDate(previousPeriod.end)}`;
 
   return (
     <div className="space-y-6">
@@ -1097,7 +1095,7 @@ export function TimecardReview() {
           </button>
         </div>
 
-        {sortedPeriods.length > 1 && (
+        {previousPeriodKey && (
           <select
             value={periodFilter}
             onChange={(e) => setPeriodFilter(e.target.value as 'current' | 'previous')}
@@ -1201,6 +1199,19 @@ export function TimecardReview() {
               </div>
             </div>
             <div className="p-5 space-y-4">
+              {/* Pay Period Selector */}
+              <div>
+                <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1.5 block">Pay Period</label>
+                <select
+                  value={sendPeriod}
+                  onChange={e => setSendPeriod(e.target.value as 'current' | 'previous')}
+                  className="w-full h-11 px-3 pr-10 text-sm font-semibold text-gray-800 bg-gray-50 border-2 border-gray-200 rounded-xl focus:border-moja-blue focus:outline-none appearance-none cursor-pointer"
+                  style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%231B3A5C' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center' }}
+                >
+                  <option value="current">Current: {formatDateShort(currentPeriod.start)} - {formatDateShort(currentPeriod.end)}</option>
+                  <option value="previous">Previous: {formatDateShort(previousPeriod.start)} - {formatDateShort(previousPeriod.end)}</option>
+                </select>
+              </div>
               {loadingStaff ? (
                 <div className="flex items-center justify-center py-8">
                   <div className="w-6 h-6 border-2 border-moja-blue border-t-transparent rounded-full animate-spin" />
