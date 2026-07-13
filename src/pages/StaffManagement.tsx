@@ -11,7 +11,7 @@ export function StaffManagement() {
   const [editingStaff, setEditingStaff] = useState<Staff | null>(null);
   const [resetPinStaff, setResetPinStaff] = useState<Staff | null>(null);
   const [newPin, setNewPin] = useState('');
-  const [editForm, setEditForm] = useState({ name: '', email: '', phone: '' });
+  const [editForm, setEditForm] = useState({ name: '', email: '', phone: '', employee_number: '' });
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   useEffect(() => {
@@ -35,14 +35,14 @@ export function StaffManagement() {
 
   function startEdit(staff: Staff) {
     setEditingStaff(staff);
-    setEditForm({ name: staff.name, email: staff.email, phone: staff.phone });
+    setEditForm({ name: staff.name, email: staff.email, phone: staff.phone, employee_number: staff.employee_number || '' });
   }
 
   async function saveEdit() {
     if (!editingStaff) return;
     const { error } = await supabase
       .from('staff')
-      .update({ name: editForm.name, email: editForm.email, phone: editForm.phone })
+      .update({ name: editForm.name, email: editForm.email, phone: editForm.phone, employee_number: editForm.employee_number.trim() || null })
       .eq('id', editingStaff.id);
 
     if (error) {
@@ -101,6 +101,7 @@ export function StaffManagement() {
           <table className="w-full">
             <thead>
               <tr className="bg-moja-blue">
+                <th className="text-left px-6 py-4 text-sm font-bold text-white">Emp #</th>
                 <th className="text-left px-6 py-4 text-sm font-bold text-white">Name</th>
                 <th className="text-left px-6 py-4 text-sm font-bold text-white">Email</th>
                 <th className="text-left px-6 py-4 text-sm font-bold text-white">Phone</th>
@@ -112,6 +113,7 @@ export function StaffManagement() {
             <tbody className="divide-y divide-gray-100">
               {staffList.map((staff, idx) => (
                 <tr key={staff.id} className={`${!staff.is_active ? 'opacity-50' : ''} ${idx % 2 === 1 ? 'bg-gray-50/50' : ''}`}>
+                  <td className="px-6 py-4 font-mono text-sm font-bold text-moja-blue/60">{staff.employee_number || '-'}</td>
                   <td className="px-6 py-4 font-bold text-moja-blue">{staff.name}</td>
                   <td className="px-6 py-4 text-moja-blue/70 font-semibold">{staff.email}</td>
                   <td className="px-6 py-4 text-moja-blue/70 font-semibold">{staff.phone || '-'}</td>
@@ -177,6 +179,16 @@ export function StaffManagement() {
               <button onClick={() => setEditingStaff(null)} className="p-2 hover:bg-gray-100 rounded-lg">
                 <X className="w-5 h-5 text-moja-blue/40" />
               </button>
+            </div>
+            <div>
+              <label className="block text-sm font-bold text-moja-blue mb-1">Employee #</label>
+              <input
+                type="text"
+                value={editForm.employee_number}
+                onChange={(e) => setEditForm(f => ({ ...f, employee_number: e.target.value }))}
+                className="w-full h-14 px-4 text-lg font-semibold text-moja-blue border-2 border-moja-blue/20 rounded-xl focus:border-moja-orange focus:outline-none"
+                placeholder="e.g., 001"
+              />
             </div>
             <div>
               <label className="block text-sm font-bold text-moja-blue mb-1">Name</label>

@@ -222,8 +222,7 @@ export function MyHoursPage() {
                 {currentWeekData.logs.map(log => {
                   const logBreaks = breaksByLog.get(log.id) || [];
                   const totalBreakMins = logBreaks.reduce((s, b) => s + (b.duration_minutes || 0), 0);
-                  const lunchMins = logBreaks.filter(b => b.break_type === 'lunch').reduce((s, b) => s + (b.duration_minutes || 0), 0);
-                  const netMinutes = log.duration_minutes != null ? log.duration_minutes - lunchMins : null;
+                  const netMinutes = log.duration_minutes != null ? log.duration_minutes : null;
 
                   return (
                     <div key={log.id} className="px-5 py-3">

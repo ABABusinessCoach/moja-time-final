@@ -151,7 +151,7 @@
   <li>Retrieves all active staff members</li>
   <li>Pulls all clock logs for the 2-week pay period</li>
   <li>Calculates gross hours per shift (clock in to clock out)</li>
-  <li>Deducts <strong>unpaid lunch breaks only</strong> (paid breaks remain in total)</li>
+  <li>All breaks are <strong>paid</strong> and included in total hours</li>
   <li>Calculates overtime: any hours exceeding 40 per week</li>
   <li>Creates a timecard report record for each employee</li>
   <li>Sends an email to each employee with their timecard summary and a review link</li>
@@ -231,7 +231,7 @@
   </div>
   <div class="timeline-item">
     <div class="tl-title">Direct Shift Override (Admin Edit)</div>
-    <div class="tl-desc">Admin can edit any shift regardless of status: modify clock in/out, break times, and lunch times. Changes take effect immediately and hours recalculate.</div>
+    <div class="tl-desc">Admin can edit any shift regardless of status: modify clock in/out and break times. Changes take effect immediately and hours recalculate.</div>
   </div>
   <div class="timeline-item green">
     <div class="tl-title">Final Approval</div>
@@ -249,7 +249,6 @@
   <tr><td>Clock In Time</td><td>Yes</td><td>Immediately recalculates shift duration</td></tr>
   <tr><td>Clock Out Time</td><td>Yes</td><td>Immediately recalculates shift duration</td></tr>
   <tr><td>Break Out / Break In</td><td>Yes</td><td>Paid break - updates break record</td></tr>
-  <tr><td>Lunch Out / Lunch In</td><td>Yes</td><td>Unpaid - deducted from net hours</td></tr>
   <tr><td>Shift Note</td><td>Yes</td><td>Admin can add explanation for the edit</td></tr>
 </table>
 

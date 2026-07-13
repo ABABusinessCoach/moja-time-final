@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { LogIn, LogOut, UtensilsCrossed, Coffee, Delete, RotateCcw, User, Timer } from 'lucide-react';
+import { LogIn, LogOut, Coffee, Delete, RotateCcw, User, Timer } from 'lucide-react';
 import { callEdgeFunction } from '../lib/supabase';
 import { Toast } from '../components/Toast';
 import { BrandAccents, BrandDots } from '../components/BrandAccents';
@@ -42,12 +42,12 @@ interface StaffLookup {
   is_clocked_in: boolean;
   is_on_break: boolean;
   break_start: string | null;
-  break_type: 'break' | 'lunch' | null;
+  break_type: 'break' | null;
 }
 
 interface ShiftSummary {
   staff_name: string;
-  action: 'clock_in' | 'clock_out' | 'start_break' | 'start_lunch' | 'end_break' | 'end_lunch';
+  action: 'clock_in' | 'clock_out' | 'start_break' | 'end_break';
   clock_in_time?: string;
   timestamp: string;
   duration_minutes?: number;
@@ -210,21 +210,18 @@ export function ClockPage() {
     }
   }
 
-  async function handleBreak(action: 'start' | 'end', breakType: 'break' | 'lunch' = 'break') {
+  async function handleBreak(action: 'start' | 'end') {
     if (pin.length !== 4 || !staffInfo || loading) return;
     setLoading(true);
 
     const endpoint = action === 'start' ? '/start-break' : '/end-break';
-    const result = await callEdgeFunction(endpoint, { pin, break_type: breakType });
+    const result = await callEdgeFunction(endpoint, { pin, break_type: 'break' });
 
     setLoading(false);
 
     if (result.success) {
       vibrate([50, 50]);
-      const resolvedType = result.break_type || breakType;
-      const actionKey = action === 'start'
-        ? (resolvedType === 'lunch' ? 'start_lunch' : 'start_break')
-        : (resolvedType === 'lunch' ? 'end_lunch' : 'end_break');
+      const actionKey = action === 'start' ? 'start_break' : 'end_break';
       setShiftSummary({
         staff_name: result.staff_name,
         action: actionKey as ShiftSummary['action'],
@@ -310,19 +307,6 @@ export function ClockPage() {
         button: 'See you soon!',
         buttonBg: 'bg-amber-600 hover:bg-amber-700',
       },
-      start_lunch: {
-        bg: 'bg-amber-50',
-        border: 'border-amber-200',
-        badge: 'Lunch break \u2014 clock paused',
-        badgeBg: 'bg-amber-100 text-amber-700',
-        iconBg: 'bg-amber-100',
-        iconColor: 'text-amber-700',
-        icon: <UtensilsCrossed className="w-6 h-6" />,
-        title: `Enjoy your lunch, ${firstName}!`,
-        subtitle: "Take your time and recharge. You've earned it.",
-        button: 'Bon appetit!',
-        buttonBg: 'bg-amber-600 hover:bg-amber-700',
-      },
       end_break: {
         bg: 'bg-sky-50',
         border: 'border-sky-200',
@@ -335,21 +319,6 @@ export function ClockPage() {
         subtitle: shiftSummary.duration_minutes
           ? `Break was ${shiftSummary.duration_minutes}m. Let's finish strong.`
           : "Let's finish strong.",
-        button: "Let's go!",
-        buttonBg: 'bg-sky-600 hover:bg-sky-700',
-      },
-      end_lunch: {
-        bg: 'bg-sky-50',
-        border: 'border-sky-200',
-        badge: 'Back from lunch',
-        badgeBg: 'bg-sky-100 text-sky-700',
-        iconBg: 'bg-sky-100',
-        iconColor: 'text-sky-600',
-        icon: <UtensilsCrossed className="w-6 h-6" />,
-        title: `Welcome back, ${firstName}!`,
-        subtitle: shiftSummary.duration_minutes
-          ? `Lunch was ${shiftSummary.duration_minutes}m. Ready to finish the day.`
-          : "Hope that was good. Ready to finish the day.",
         button: "Let's go!",
         buttonBg: 'bg-sky-600 hover:bg-sky-700',
       },
@@ -536,7 +505,7 @@ export function ClockPage() {
                         : 'bg-moja-blue/10'
                   }`}>
                     {staffInfo.is_on_break
-                      ? <UtensilsCrossed className="w-7 h-7 sm:w-8 sm:h-8 text-amber-600" />
+                      ? <Coffee className="w-7 h-7 sm:w-8 sm:h-8 text-amber-600" />
                       : <User className={`w-7 h-7 sm:w-8 sm:h-8 ${staffInfo.is_clocked_in ? 'text-green-600' : 'text-moja-blue'}`} />
                     }
                   </div>
@@ -558,7 +527,7 @@ export function ClockPage() {
                               : 'bg-gray-400'
                         }`} />
                         {staffInfo.is_on_break
-                          ? `On ${staffInfo.break_type === 'lunch' ? 'Lunch' : 'Break'}`
+                          ? 'On Break'
                           : staffInfo.is_clocked_in
                             ? 'Clocked In'
                             : 'Clocked Out'}
@@ -646,7 +615,7 @@ export function ClockPage() {
                 </div>
               </div>
 
-              {/* Clock In / Clock Out / Lunch / Break Buttons */}
+              {/* Clock In / Clock Out / Break Buttons */}
               <div className="px-4 pb-4 space-y-2.5 sm:px-5 sm:pb-5 sm:space-y-3">
                 <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
                   <button
@@ -679,44 +648,24 @@ export function ClockPage() {
                   </button>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
-                  <button
-                    onClick={() => handleBreak(staffInfo?.is_on_break ? 'end' : 'start', 'lunch')}
-                    disabled={!staffInfo || loading || !(staffInfo?.is_clocked_in ?? false)}
-                    className={`h-[46px] sm:h-[54px] rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-1.5 sm:gap-2 transition-all touch-manipulation disabled:opacity-30 disabled:cursor-not-allowed active:scale-[0.98] ${
-                      staffInfo?.is_on_break
-                        ? 'bg-amber-500 text-white hover:bg-amber-500/90'
-                        : 'bg-amber-50 text-amber-700 border-2 border-amber-200 hover:bg-amber-100'
-                    }`}
-                  >
-                    {loading ? (
-                      <div className={`w-4 h-4 border-2 border-t-transparent rounded-full animate-spin ${staffInfo?.is_on_break ? 'border-white' : 'border-amber-700'}`} />
-                    ) : (
-                      <>
-                        <UtensilsCrossed className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                        {staffInfo?.is_on_break ? 'End Lunch' : 'Lunch'}
-                      </>
-                    )}
-                  </button>
-                  <button
-                    onClick={() => handleBreak(staffInfo?.is_on_break ? 'end' : 'start', 'break')}
-                    disabled={!staffInfo || loading || !(staffInfo?.is_clocked_in ?? false)}
-                    className={`h-[46px] sm:h-[54px] rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-1.5 sm:gap-2 transition-all touch-manipulation disabled:opacity-30 disabled:cursor-not-allowed active:scale-[0.98] ${
-                      staffInfo?.is_on_break
-                        ? 'bg-sky-500 text-white hover:bg-sky-500/90'
-                        : 'bg-sky-50 text-sky-700 border-2 border-sky-200 hover:bg-sky-100'
-                    }`}
-                  >
-                    {loading ? (
-                      <div className={`w-4 h-4 border-2 border-t-transparent rounded-full animate-spin ${staffInfo?.is_on_break ? 'border-white' : 'border-sky-700'}`} />
-                    ) : (
-                      <>
-                        <Coffee className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                        {staffInfo?.is_on_break ? 'End Break' : 'Break'}
-                      </>
-                    )}
-                  </button>
-                </div>
+                <button
+                  onClick={() => handleBreak(staffInfo?.is_on_break ? 'end' : 'start')}
+                  disabled={!staffInfo || loading || !(staffInfo?.is_clocked_in ?? false)}
+                  className={`w-full h-[46px] sm:h-[54px] rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-1.5 sm:gap-2 transition-all touch-manipulation disabled:opacity-30 disabled:cursor-not-allowed active:scale-[0.98] ${
+                    staffInfo?.is_on_break
+                      ? 'bg-amber-500 text-white hover:bg-amber-500/90'
+                      : 'bg-amber-50 text-amber-700 border-2 border-amber-200 hover:bg-amber-100'
+                  }`}
+                >
+                  {loading ? (
+                    <div className={`w-4 h-4 border-2 border-t-transparent rounded-full animate-spin ${staffInfo?.is_on_break ? 'border-white' : 'border-amber-700'}`} />
+                  ) : (
+                    <>
+                      <Coffee className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                      {staffInfo?.is_on_break ? 'End Break' : 'Break'}
+                    </>
+                  )}
+                </button>
               </div>
             </div>
 

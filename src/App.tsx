@@ -6,6 +6,7 @@ import { AdminLogin } from './pages/AdminLogin';
 import { AdminLayout } from './pages/AdminLayout';
 import { AdminSetup } from './pages/AdminSetup';
 import { RegisterPage } from './pages/RegisterPage';
+import { SelfSignupPage } from './pages/SelfSignupPage';
 import { ResetPassword } from './pages/ResetPassword';
 import { MyHoursPage } from './pages/MyHoursPage';
 import { TimecardReportPage } from './pages/TimecardReportPage';
@@ -16,6 +17,9 @@ function getRoute(): { page: string; params: Record<string, string> } {
   const hash = window.location.hash.slice(1) || '/';
   if (hash.startsWith('/register/')) {
     return { page: 'register', params: { token: hash.replace('/register/', '') } };
+  }
+  if (hash === '/signup' || hash.startsWith('/signup')) {
+    return { page: 'signup', params: {} };
   }
   if (hash.startsWith('/timecard/')) {
     return { page: 'timecard', params: { token: hash.replace('/timecard/', '') } };
@@ -64,6 +68,10 @@ export default function App() {
 
     if (route.page === 'register') {
       return <RegisterPage token={route.params.token} />;
+    }
+
+    if (route.page === 'signup') {
+      return <SelfSignupPage />;
     }
 
     if (route.page === 'timecard') {

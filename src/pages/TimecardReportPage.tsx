@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Clock, AlertTriangle, CheckCircle, MessageSquare, Send, Pencil, Trash2, ArrowLeft, ThumbsUp, ShieldCheck, Lock, Save, X, XCircle } from 'lucide-react';
 import { callTimecardFunction } from '../lib/supabase';
 import { BrandAccents } from '../components/BrandAccents';
+import { Toast } from '../components/Toast';
 import { formatHM, formatHMFromHours } from '../lib/formatTime';
 
 interface Shift {
@@ -51,6 +52,7 @@ interface ReportData {
     id: string;
     staff_name: string;
     staff_email: string;
+    employee_number: string | null;
     total_hours: number;
     overtime_hours: number;
     status: 'pending_review' | 'has_notes' | 'employee_approved' | 'approved';
@@ -67,6 +69,14 @@ interface ReportData {
   breaks: BreakLog[];
   notes: ShiftNote[];
   corrections: Correction[];
+}
+
+interface AvailableReport {
+  id: string;
+  access_token: string;
+  status: string;
+  start_date: string;
+  end_date: string;
 }
 
 const DAY_NAMES = ['Sat', 'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
@@ -111,14 +121,23 @@ function formatDateShort(dateStr: string): string {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
+interface ShiftRow {
+  shift: Shift;
+  breaks: BreakLog[];
+  correction: Correction | null;
+  pendingCorrection: Correction | null;
+  rejectedCorrection: Correction | null;
+  notes: ShiftNote[];
+  shiftMinutes: number;
+}
+
 interface DayRow {
   date: Date;
   dateKey: string;
   dayName: string;
   shift: Shift | null;
+  shiftRows: ShiftRow[];
   breaks: BreakLog[];
-  lunchBreaks: BreakLog[];
-  regularBreaks: BreakLog[];
   correction: Correction | null;
   pendingCorrection: Correction | null;
   rejectedCorrection: Correction | null;
@@ -150,6 +169,10 @@ export function TimecardReportPage({ token }: { token: string }) {
   const [error, setError] = useState('');
   const [approving, setApproving] = useState(false);
 
+  // Period switching
+  const [availableReports, setAvailableReports] = useState<AvailableReport[]>([]);
+  const [activeToken, setActiveToken] = useState(token);
+
   // Override modal state
   const [editingShift, setEditingShift] = useState<Shift | null>(null);
   const [editClockIn, setEditClockIn] = useState('');
@@ -159,16 +182,26 @@ export function TimecardReportPage({ token }: { token: string }) {
   const [editHours, setEditHours] = useState('');
   const [savingCorrection, setSavingCorrection] = useState(false);
 
+  // Add shift modal (empty day)
+  const [addShiftDate, setAddShiftDate] = useState<string | null>(null);
+  const [addShiftNote, setAddShiftNote] = useState('');
+  const [addShiftClockIn, setAddShiftClockIn] = useState('');
+  const [addShiftClockOut, setAddShiftClockOut] = useState('');
+  const [addShiftBreakOut, setAddShiftBreakOut] = useState('');
+  const [addShiftBreakIn, setAddShiftBreakIn] = useState('');
+  const [savingAddShift, setSavingAddShift] = useState(false);
+
   // General notes
   const [noteText, setNoteText] = useState('');
   const [noteShiftId, setNoteShiftId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [editNoteText, setEditNoteText] = useState('');
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   useEffect(() => {
     if (verified) loadReport();
-  }, [verified, token]);
+  }, [verified, activeToken]);
 
   async function handlePinVerify() {
     const pin = pinDigits.join('');
@@ -184,6 +217,9 @@ export function TimecardReportPage({ token }: { token: string }) {
     setVerifying(false);
     if (result.success) {
       setStaffName(result.staff_name || '');
+      if (result.available_reports) {
+        setAvailableReports(result.available_reports);
+      }
       setVerified(true);
     } else {
       setPinError(result.message || 'Invalid PIN');
@@ -215,9 +251,10 @@ export function TimecardReportPage({ token }: { token: string }) {
     if (e.key === 'Enter') handlePinVerify();
   }
 
-  async function loadReport() {
-    setLoading(true);
-    const result = await callTimecardFunction(`/by-token/${token}`);
+  async function loadReport(showSpinner = true) {
+    if (showSpinner) setLoading(true);
+    setError('');
+    const result = await callTimecardFunction(`/by-token/${activeToken}`);
     if (result.success) {
       setData(result);
     } else {
@@ -228,8 +265,17 @@ export function TimecardReportPage({ token }: { token: string }) {
 
   async function handleApprove() {
     setApproving(true);
-    const result = await callTimecardFunction('/approve', { body: { access_token: token } });
-    if (result.success) await loadReport();
+    try {
+      const result = await callTimecardFunction('/approve', { body: { access_token: activeToken } });
+      if (result.success) {
+        setToast({ message: 'Timecard approved successfully!', type: 'success' });
+        await loadReport(false);
+      } else {
+        setToast({ message: result.message || 'Failed to approve timecard. Please try again.', type: 'error' });
+      }
+    } catch {
+      setToast({ message: 'Network error. Please check your connection and try again.', type: 'error' });
+    }
     setApproving(false);
   }
 
@@ -267,9 +313,7 @@ export function TimecardReportPage({ token }: { token: string }) {
       setEditClockOut(shift.clock_out_time ? toESTInputTime(shift.clock_out_time) : '');
       setEditNote('');
       setEditMode('hours');
-      const breaks = data?.breaks.filter(b => b.clock_log_id === shift.id) || [];
-      const lunchMin = breaks.filter(b => b.break_type === 'lunch').reduce((s, b) => s + (b.duration_minutes || 0), 0);
-      const netMins = Math.max(0, (shift.duration_minutes || 0) - lunchMin);
+      const netMins = Math.max(0, shift.duration_minutes || 0);
       setEditHours(netMins > 0 ? (netMins / 60).toFixed(2) : '');
     }
   }
@@ -283,7 +327,7 @@ export function TimecardReportPage({ token }: { token: string }) {
     const shiftDate = getShiftDateKey(editingShift.clock_in_time);
 
     const body: Record<string, unknown> = {
-      access_token: token,
+      access_token: activeToken,
       clock_log_id: editingShift.id,
       note: editNote.trim(),
     };
@@ -298,9 +342,51 @@ export function TimecardReportPage({ token }: { token: string }) {
     const result = await callTimecardFunction('/corrections', { body });
     if (result.success) {
       setEditingShift(null);
-      await loadReport();
+      setToast({ message: 'Edit submitted for manager review', type: 'success' });
+      await loadReport(false);
+    } else {
+      setToast({ message: result.message || 'Failed to save edit. Please try again.', type: 'error' });
     }
     setSavingCorrection(false);
+  }
+
+  function openAddShiftModal(dateKey: string) {
+    setAddShiftDate(dateKey);
+    setAddShiftNote('');
+    setAddShiftClockIn('');
+    setAddShiftClockOut('');
+    setAddShiftBreakOut('');
+    setAddShiftBreakIn('');
+  }
+
+  async function handleAddShift() {
+    if (!addShiftDate || !addShiftNote.trim()) return;
+    if (!addShiftClockIn || !addShiftClockOut) return;
+
+    setSavingAddShift(true);
+
+    const body: Record<string, unknown> = {
+      access_token: activeToken,
+      date: addShiftDate,
+      note: addShiftNote.trim(),
+      proposed_clock_in: toISOFromESTTime(addShiftDate, addShiftClockIn),
+      proposed_clock_out: toISOFromESTTime(addShiftDate, addShiftClockOut),
+    };
+
+    if (addShiftBreakOut && addShiftBreakIn) {
+      body.break_start = toISOFromESTTime(addShiftDate, addShiftBreakOut);
+      body.break_end = toISOFromESTTime(addShiftDate, addShiftBreakIn);
+    }
+
+    const result = await callTimecardFunction('/add-shift', { body });
+    if (result.success) {
+      setAddShiftDate(null);
+      setToast({ message: 'Shift added for manager review', type: 'success' });
+      await loadReport(false);
+    } else {
+      setToast({ message: result.message || 'Failed to add shift. Please try again.', type: 'error' });
+    }
+    setSavingAddShift(false);
   }
 
   async function handleAddNote() {
@@ -308,11 +394,11 @@ export function TimecardReportPage({ token }: { token: string }) {
     setSubmitting(true);
     const shiftId = noteShiftId === 'general' ? null : noteShiftId;
     await callTimecardFunction('/notes', {
-      body: { access_token: token, clock_log_id: shiftId, body: noteText.trim() },
+      body: { access_token: activeToken, clock_log_id: shiftId, body: noteText.trim() },
     });
     setNoteText('');
     setNoteShiftId(null);
-    await loadReport();
+    await loadReport(false);
     setSubmitting(false);
   }
 
@@ -321,11 +407,11 @@ export function TimecardReportPage({ token }: { token: string }) {
     setSubmitting(true);
     await callTimecardFunction('/notes', {
       method: 'PUT',
-      body: { access_token: token, note_id: noteId, body: editNoteText.trim() },
+      body: { access_token: activeToken, note_id: noteId, body: editNoteText.trim() },
     });
     setEditingNoteId(null);
     setEditNoteText('');
-    await loadReport();
+    await loadReport(false);
     setSubmitting(false);
   }
 
@@ -333,9 +419,9 @@ export function TimecardReportPage({ token }: { token: string }) {
     if (!confirm('Delete this note?')) return;
     await callTimecardFunction('/notes', {
       method: 'DELETE',
-      body: { access_token: token, note_id: noteId },
+      body: { access_token: activeToken, note_id: noteId },
     });
-    await loadReport();
+    await loadReport(false);
   }
 
   function buildWeekBlocks(): WeekBlock[] {
@@ -362,23 +448,26 @@ export function TimecardReportPage({ token }: { token: string }) {
         const dayShifts = shifts.filter(s => getShiftDateKey(s.clock_in_time) === dateKey);
         const shift = dayShifts.length > 0 ? dayShifts[0] : null;
 
-        const dayBreaks = shift ? breaks.filter(b => b.clock_log_id === shift.id) : [];
-        const lunchBreaks = dayBreaks.filter(b => b.break_type === 'lunch');
-        const regularBreaks = dayBreaks.filter(b => b.break_type !== 'lunch');
+        const dayBreaks = shift ? breaks.filter(b => dayShifts.some(s => s.id === b.clock_log_id)) : [];
 
         const correction = shift ? (corrections.find(c => c.clock_log_id === shift.id && c.approval_status === 'approved') || null) : null;
         const pendingCorrection = shift ? (corrections.find(c => c.clock_log_id === shift.id && c.approval_status === 'pending') || null) : null;
         const rejectedCorrection = shift ? (corrections.find(c => c.clock_log_id === shift.id && c.approval_status === 'rejected') || null) : null;
-        const shiftNotes = shift ? notes.filter(n => n.clock_log_id === shift.id) : [];
+        const shiftNotes = shift ? notes.filter(n => dayShifts.some(s => s.id === n.clock_log_id)) : [];
 
         let netMinutes = 0;
-        if (shift) {
-          const lunchMin = dayBreaks.filter(b => b.break_type === 'lunch').reduce((s, b) => s + (b.duration_minutes || 0), 0);
-          if (correction) {
-            netMinutes = Math.max(0, (correction.proposed_duration_minutes || 0) - lunchMin);
-          } else {
-            netMinutes = Math.max(0, (shift.duration_minutes || 0) - lunchMin);
-          }
+        const shiftRows: ShiftRow[] = [];
+        for (const s of dayShifts) {
+          const sBreaks = breaks.filter(b => b.clock_log_id === s.id);
+          const sCorrection = corrections.find(c => c.clock_log_id === s.id && c.approval_status === 'approved') || null;
+          const sPending = corrections.find(c => c.clock_log_id === s.id && c.approval_status === 'pending') || null;
+          const sRejected = corrections.find(c => c.clock_log_id === s.id && c.approval_status === 'rejected') || null;
+          const sNotes = notes.filter(n => n.clock_log_id === s.id);
+          const shiftMins = sCorrection
+            ? Math.max(0, sCorrection.proposed_duration_minutes || 0)
+            : Math.max(0, s.duration_minutes || 0);
+          netMinutes += shiftMins;
+          shiftRows.push({ shift: s, breaks: sBreaks, correction: sCorrection, pendingCorrection: sPending, rejectedCorrection: sRejected, notes: sNotes, shiftMinutes: shiftMins });
         }
 
         weekNetTotal += netMinutes;
@@ -387,9 +476,8 @@ export function TimecardReportPage({ token }: { token: string }) {
           dateKey,
           dayName: DAY_NAMES[d],
           shift,
+          shiftRows,
           breaks: dayBreaks,
-          lunchBreaks,
-          regularBreaks,
           correction,
           pendingCorrection,
           rejectedCorrection,
@@ -526,11 +614,36 @@ export function TimecardReportPage({ token }: { token: string }) {
 
   return (
     <div className="min-h-[100dvh] bg-moja-bg relative">
+      {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
       <BrandAccents />
       <div className="relative z-10 max-w-4xl mx-auto p-4 sm:p-6 pb-32">
         <a href="#/" className="inline-flex items-center gap-1.5 text-sm text-moja-blue/50 hover:text-moja-blue font-medium mb-4 transition-colors">
           <ArrowLeft className="w-4 h-4" /> Back to Clock
         </a>
+
+        {/* Pay Period Switcher */}
+        {availableReports.length > 1 && (
+          <div className="mb-4">
+            <select
+              value={activeToken}
+              onChange={(e) => { setActiveToken(e.target.value); setData(null); }}
+              className="w-full sm:w-auto h-11 px-4 pr-10 text-sm font-bold text-moja-blue bg-white border-2 border-moja-blue/20 rounded-xl focus:border-moja-orange focus:outline-none appearance-none cursor-pointer"
+              style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%231B3A5C' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center' }}
+            >
+              {availableReports.map((ar, i) => {
+                const label = i === 0 ? 'Current Period' : 'Previous Period';
+                const dates = ar.start_date && ar.end_date
+                  ? ` (${formatDateShort(ar.start_date)} - ${formatDateShort(ar.end_date)})`
+                  : '';
+                return (
+                  <option key={ar.id} value={ar.access_token}>
+                    {label}{dates}
+                  </option>
+                );
+              }).slice(0, 2)}
+            </select>
+          </div>
+        )}
 
         {/* Status Banners */}
         {!isApproved && report.status === 'pending_review' && (
@@ -549,6 +662,7 @@ export function TimecardReportPage({ token }: { token: string }) {
             <div>
               <h1 className="text-lg sm:text-xl font-bold text-white">Timecard Report</h1>
               <p className="text-white/60 text-sm font-medium mt-0.5">
+                {report.employee_number && <span className="font-mono mr-1">#{report.employee_number}</span>}
                 {report.staff_name} &middot; {formatDateShort(report.pay_period.start_date)} - {formatDateShort(report.pay_period.end_date)}
               </p>
             </div>
@@ -576,8 +690,7 @@ export function TimecardReportPage({ token }: { token: string }) {
                   <th className="text-left px-2 py-2.5 font-bold text-gray-600">Start</th>
                   <th className="text-left px-2 py-2.5 font-bold text-green-700 text-[11px]">Break Out</th>
                   <th className="text-left px-2 py-2.5 font-bold text-green-700 text-[11px]">Break In</th>
-                  <th className="text-left px-2 py-2.5 font-bold text-gray-600 text-[11px]">Lunch Out</th>
-                  <th className="text-left px-2 py-2.5 font-bold text-gray-600 text-[11px]">Lunch In</th>
+                  <th className="text-center px-2 py-2.5 font-bold text-green-700 text-[11px]">Lunch</th>
                   <th className="text-left px-2 py-2.5 font-bold text-gray-600">End</th>
                   <th className="text-center px-2 py-2.5 font-bold text-gray-600">Vac/Sick</th>
                   <th className="text-right px-2 py-2.5 font-bold text-gray-600">Reg</th>
@@ -593,11 +706,12 @@ export function TimecardReportPage({ token }: { token: string }) {
                     weekIndex={wi}
                     canEdit={canEdit}
                     onEditShift={openEditModal}
+                    onAddShift={openAddShiftModal}
                   />
                 ))}
                 {/* Period Total */}
                 <tr className="bg-gray-100 border-t-2 border-gray-300 font-bold">
-                  <td colSpan={8} className="px-3 py-2.5 text-gray-700">Period Total</td>
+                  <td colSpan={7} className="px-3 py-2.5 text-gray-700">Period Total</td>
                   <td className="px-2 py-2.5 text-right text-gray-700">{formatDecimalHours(periodReg)}</td>
                   <td className="px-2 py-2.5 text-right text-orange-600">{formatDecimalHours(periodOT)}</td>
                   <td className="px-3 py-2.5 text-right text-moja-blue bg-blue-50">{formatDecimalHours(periodTotal)}</td>
@@ -775,9 +889,7 @@ export function TimecardReportPage({ token }: { token: string }) {
                     className="w-full px-3 py-2.5 text-sm border-2 border-gray-200 rounded-lg focus:outline-none focus:border-moja-blue"
                   />
                   {editHours && Number(editHours) >= 0 && (() => {
-                    const breaks = data?.breaks.filter(b => b.clock_log_id === editingShift.id) || [];
-                    const lunchMin = breaks.filter(b => b.break_type === 'lunch').reduce((s, b) => s + (b.duration_minutes || 0), 0);
-                    const oldNetMins = Math.max(0, (editingShift.duration_minutes || 0) - lunchMin);
+                    const oldNetMins = Math.max(0, editingShift.duration_minutes || 0);
                     const newMins = Number(editHours) * 60;
                     const diff = newMins - oldNetMins;
                     return (
@@ -872,127 +984,370 @@ export function TimecardReportPage({ token }: { token: string }) {
           </div>
         </div>
       )}
+
+      {/* Add Shift Modal (empty day) */}
+      {addShiftDate && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setAddShiftDate(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="bg-moja-blue p-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-white font-bold text-lg">Add Hours</h3>
+                  <p className="text-white/60 text-sm">
+                    {parseLocalDate(addShiftDate).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
+                  </p>
+                </div>
+                <button onClick={() => setAddShiftDate(null)} className="p-2 text-white/50 hover:text-white rounded-lg transition-colors">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+            <div className="p-5 space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1 block">Clock In</label>
+                  <input
+                    type="time"
+                    value={addShiftClockIn}
+                    onChange={e => setAddShiftClockIn(e.target.value)}
+                    className="w-full px-3 py-2.5 text-sm border-2 border-gray-200 rounded-lg focus:outline-none focus:border-moja-blue"
+                    autoFocus
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1 block">Clock Out</label>
+                  <input
+                    type="time"
+                    value={addShiftClockOut}
+                    onChange={e => setAddShiftClockOut(e.target.value)}
+                    className="w-full px-3 py-2.5 text-sm border-2 border-gray-200 rounded-lg focus:outline-none focus:border-moja-blue"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[11px] font-semibold text-green-700 uppercase tracking-wide mb-1 block">Break Out</label>
+                  <input
+                    type="time"
+                    value={addShiftBreakOut}
+                    onChange={e => setAddShiftBreakOut(e.target.value)}
+                    className="w-full px-3 py-2.5 text-sm border-2 border-gray-200 rounded-lg focus:outline-none focus:border-green-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-semibold text-green-700 uppercase tracking-wide mb-1 block">Break In</label>
+                  <input
+                    type="time"
+                    value={addShiftBreakIn}
+                    onChange={e => setAddShiftBreakIn(e.target.value)}
+                    className="w-full px-3 py-2.5 text-sm border-2 border-gray-200 rounded-lg focus:outline-none focus:border-green-500"
+                  />
+                </div>
+              </div>
+              {addShiftClockIn && addShiftClockOut && (() => {
+                const [hIn, mIn] = addShiftClockIn.split(':').map(Number);
+                const [hOut, mOut] = addShiftClockOut.split(':').map(Number);
+                const grossMins = Math.max(0, (hOut * 60 + mOut) - (hIn * 60 + mIn));
+                let breakMins = 0;
+                if (addShiftBreakOut && addShiftBreakIn) {
+                  const [bOutH, bOutM] = addShiftBreakOut.split(':').map(Number);
+                  const [bInH, bInM] = addShiftBreakIn.split(':').map(Number);
+                  breakMins = Math.max(0, (bInH * 60 + bInM) - (bOutH * 60 + bOutM));
+                }
+                const netMins = Math.max(0, grossMins - breakMins);
+                const newPeriodTotal = periodTotal + netMins;
+                return (
+                  <div className="bg-blue-50 rounded-lg p-3 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-blue-600 font-medium">Net shift hours:</span>
+                      <span className="text-sm font-bold text-blue-700">{formatHM(netMins)}</span>
+                    </div>
+                    {breakMins > 0 && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-green-600 font-medium">Break deducted:</span>
+                        <span className="text-sm font-bold text-green-700">-{formatHM(breakMins)}</span>
+                      </div>
+                    )}
+                    <div className="flex items-center justify-between border-t border-blue-100 pt-1.5">
+                      <span className="text-xs text-blue-600 font-medium">New period total:</span>
+                      <span className="text-sm font-bold text-blue-800">
+                        {formatHM(newPeriodTotal)}
+                        <span className="ml-1.5 text-[11px] text-green-600">(+{formatHM(netMins)})</span>
+                      </span>
+                    </div>
+                  </div>
+                );
+              })()}
+              <div>
+                <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1 block">Reason (required)</label>
+                <textarea
+                  value={addShiftNote}
+                  onChange={e => setAddShiftNote(e.target.value)}
+                  placeholder="e.g., Worked but forgot to clock in"
+                  rows={2}
+                  className="w-full px-3 py-2.5 text-sm border-2 border-gray-200 rounded-lg focus:outline-none focus:border-moja-blue resize-none"
+                />
+              </div>
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                <p className="text-xs text-amber-700 font-medium">This entry will be sent to your manager for approval.</p>
+              </div>
+              <div className="flex gap-2 pt-2">
+                <button
+                  onClick={handleAddShift}
+                  disabled={savingAddShift || !addShiftNote.trim() || !addShiftClockIn || !addShiftClockOut}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-moja-blue text-white font-bold rounded-xl hover:bg-moja-blue/90 disabled:opacity-40 transition-all"
+                >
+                  {savingAddShift ? (
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <><Save className="w-4 h-4" /> Submit for Approval</>
+                  )}
+                </button>
+                <button
+                  onClick={() => setAddShiftDate(null)}
+                  className="px-4 py-3 text-gray-500 font-bold rounded-xl hover:bg-gray-100 transition-all"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-function WeekSection({ week, canEdit, onEditShift }: {
+function WeekSection({ week, canEdit, onEditShift, onAddShift }: {
   week: WeekBlock;
   weekIndex: number;
   canEdit: boolean;
   onEditShift: (shift: Shift) => void;
+  onAddShift: (dateKey: string) => void;
   corrections: Correction[];
 }) {
   return (
     <>
       <tr className="bg-gray-100/70 border-t border-gray-200">
-        <td colSpan={11} className="px-3 py-2 font-bold text-gray-600 text-xs">
+        <td colSpan={10} className="px-3 py-2 font-bold text-gray-600 text-xs">
           {week.label} &middot; <span className="font-medium text-gray-400">{week.dateRange}</span>
         </td>
       </tr>
       {week.days.map((day, di) => {
-        const hasCorrection = !!day.correction;
-        const hasPending = !!day.pendingCorrection;
-        const hasRejected = !!day.rejectedCorrection;
-        const hasNotes = day.notes.length > 0 || !!day.correction?.note || hasPending || hasRejected;
         const isWeekend = di < 2;
+        const rowCount = day.shiftRows.length || 1;
         return (
           <React.Fragment key={day.dateKey}>
-            <tr
-              className={`border-b ${hasNotes ? 'border-b-0' : 'border-gray-100'} last:border-0 transition-colors ${
-                hasPending ? 'bg-amber-50/50' :
-                hasCorrection ? 'bg-blue-50/50' :
-                isWeekend ? 'bg-gray-50/30' : 'hover:bg-gray-50/50'
-              } ${canEdit && day.shift ? 'cursor-pointer' : ''}`}
-              onClick={() => { if (canEdit && day.shift) onEditShift(day.shift); }}
-            >
-              <td className="px-3 py-2.5 font-bold text-gray-700">{day.dayName}</td>
-              <td className="px-2 py-2.5 text-gray-600 whitespace-nowrap">
-                {day.shift ? (
-                  <CellValue
-                    original={formatTimeEST(day.shift.clock_in_time)}
-                    proposed={hasCorrection ? formatTimeEST(day.correction!.proposed_clock_in) : undefined}
-                    changed={hasCorrection && day.correction!.proposed_clock_in !== day.correction!.original_clock_in}
-                  />
-                ) : ''}
-              </td>
-              <td className="px-2 py-2.5 text-gray-500 whitespace-nowrap text-[11px]">
-                {day.regularBreaks.length > 0 ? formatTimeEST(day.regularBreaks[0].break_start) : ''}
-              </td>
-              <td className="px-2 py-2.5 text-gray-500 whitespace-nowrap text-[11px]">
-                {day.regularBreaks.length > 0 && day.regularBreaks[0].break_end ? formatTimeEST(day.regularBreaks[0].break_end) : ''}
-              </td>
-              <td className="px-2 py-2.5 text-gray-500 whitespace-nowrap text-[11px]">
-                {day.lunchBreaks.length > 0 ? formatTimeEST(day.lunchBreaks[0].break_start) : ''}
-              </td>
-              <td className="px-2 py-2.5 text-gray-500 whitespace-nowrap text-[11px]">
-                {day.lunchBreaks.length > 0 && day.lunchBreaks[0].break_end ? formatTimeEST(day.lunchBreaks[0].break_end) : ''}
-              </td>
-              <td className="px-2 py-2.5 text-gray-600 whitespace-nowrap">
-                {day.shift?.clock_out_time ? (
-                  <CellValue
-                    original={formatTimeEST(day.shift.clock_out_time)}
-                    proposed={hasCorrection ? formatTimeEST(day.correction!.proposed_clock_out) : undefined}
-                    changed={hasCorrection && day.correction!.proposed_clock_out !== day.correction!.original_clock_out}
-                  />
-                ) : day.shift ? (
-                  <span className="text-green-600 text-[10px] font-bold">ACTIVE</span>
-                ) : ''}
-              </td>
-              <td className="px-2 py-2.5 text-center text-gray-400">-</td>
-              <td className="px-2 py-2.5 text-right font-medium text-gray-700">
-                {day.regMinutes > 0 ? formatDecimalHours(day.regMinutes) : ''}
-              </td>
-              <td className="px-2 py-2.5 text-right font-medium text-orange-600">
-                {day.otMinutes > 0 ? formatDecimalHours(day.otMinutes) : ''}
-              </td>
-              <td className={`px-3 py-2.5 text-right font-bold bg-blue-50/50 ${hasCorrection ? 'text-blue-700' : 'text-moja-blue'}`}>
-                {day.netMinutes > 0 ? formatDecimalHours(day.netMinutes) : ''}
-                {hasCorrection && <span className="ml-1 text-[9px] text-blue-500 align-super">*</span>}
-              </td>
-            </tr>
-            {/* Inline notes row */}
-            {hasNotes && (
-              <tr className={`border-b border-gray-100 ${hasPending ? 'bg-amber-50/30' : hasCorrection ? 'bg-blue-50/30' : ''}`}>
-                <td colSpan={11} className="px-3 pb-2 pt-0">
-                  <div className="flex flex-wrap gap-1.5 pl-1">
-                    {day.pendingCorrection && (
-                      <span className="inline-flex items-center gap-1 text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium">
-                        <Clock className="w-2.5 h-2.5" />
-                        Pending: {day.pendingCorrection.proposed_hours != null
-                          ? `${day.pendingCorrection.proposed_hours}h`
-                          : `${formatTimeEST(day.pendingCorrection.proposed_clock_in)} - ${formatTimeEST(day.pendingCorrection.proposed_clock_out)}`
-                        }
-                        {day.pendingCorrection.note && ` - ${day.pendingCorrection.note}`}
-                      </span>
-                    )}
-                    {day.rejectedCorrection && (
-                      <span className="inline-flex items-center gap-1 text-[10px] bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-medium">
-                        <XCircle className="w-2.5 h-2.5" /> Rejected{day.rejectedCorrection.rejection_reason ? `: ${day.rejectedCorrection.rejection_reason}` : ''}
-                      </span>
-                    )}
-                    {day.correction?.note && (
-                      <span className="inline-flex items-center gap-1 text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">
-                        <Pencil className="w-2.5 h-2.5" /> {day.correction.note}
-                      </span>
-                    )}
-                    {day.notes.map(note => (
-                      <span key={note.id} className={`inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-medium ${
-                        note.status === 'resolved' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
-                      }`}>
-                        <MessageSquare className="w-2.5 h-2.5" /> {note.body}
-                        {note.resolution_comment && <span className="text-green-600 ml-1">- {note.resolution_comment}</span>}
-                      </span>
-                    ))}
-                  </div>
-                </td>
-              </tr>
-            )}
+            {rowCount <= 1 ? (() => {
+              const sr = day.shiftRows[0] || null;
+              const hasCorrection = !!sr?.correction;
+              const hasPending = !!sr?.pendingCorrection;
+              const hasRejected = !!sr?.rejectedCorrection;
+              const hasNotes = (sr?.notes.length || 0) > 0 || !!sr?.correction?.note || hasPending || hasRejected;
+              return (
+                <>
+                  <tr
+                    className={`border-b ${hasNotes ? 'border-b-0' : 'border-gray-100'} last:border-0 transition-colors ${
+                      hasPending ? 'bg-amber-50/50' :
+                      hasCorrection ? 'bg-blue-50/50' :
+                      isWeekend ? 'bg-gray-50/30' : 'hover:bg-gray-50/50'
+                    } ${canEdit ? 'cursor-pointer' : ''}`}
+                    onClick={() => { if (canEdit && sr) onEditShift(sr.shift); else if (canEdit && !sr) onAddShift(day.dateKey); }}
+                  >
+                    <td className="px-3 py-2.5 font-bold text-gray-700">{day.dayName}</td>
+                    <td className="px-2 py-2.5 text-gray-600 whitespace-nowrap">
+                      {sr ? (
+                        <CellValue
+                          original={formatTimeEST(sr.shift.clock_in_time)}
+                          proposed={hasCorrection ? formatTimeEST(sr.correction!.proposed_clock_in) : undefined}
+                          changed={hasCorrection && sr.correction!.proposed_clock_in !== sr.correction!.original_clock_in}
+                        />
+                      ) : ''}
+                    </td>
+                    <td className="px-2 py-2.5 text-gray-500 whitespace-nowrap text-[11px]">
+                      {sr && sr.breaks.length > 0 ? formatTimeEST(sr.breaks[0].break_start) : ''}
+                    </td>
+                    <td className="px-2 py-2.5 text-gray-500 whitespace-nowrap text-[11px]">
+                      {sr && sr.breaks.length > 0 && sr.breaks[0].break_end ? formatTimeEST(sr.breaks[0].break_end) : ''}
+                    </td>
+                    <td className="px-2 py-2.5 text-center text-green-700 font-medium text-[11px]">
+                      {sr && sr.breaks.length > 0 && sr.breaks[0].break_end ? (() => {
+                        const start = new Date(sr.breaks[0].break_start).getTime();
+                        const end = new Date(sr.breaks[0].break_end!).getTime();
+                        const mins = Math.round((end - start) / 60000);
+                        return mins > 0 ? formatHM(mins) : '';
+                      })() : ''}
+                    </td>
+                    <td className="px-2 py-2.5 text-gray-600 whitespace-nowrap">
+                      {sr?.shift.clock_out_time ? (
+                        <CellValue
+                          original={formatTimeEST(sr.shift.clock_out_time)}
+                          proposed={hasCorrection ? formatTimeEST(sr.correction!.proposed_clock_out) : undefined}
+                          changed={hasCorrection && sr.correction!.proposed_clock_out !== sr.correction!.original_clock_out}
+                        />
+                      ) : sr ? (
+                        <span className="text-green-600 text-[10px] font-bold">ACTIVE</span>
+                      ) : ''}
+                    </td>
+                    <td className="px-2 py-2.5 text-center text-gray-400">-</td>
+                    <td className="px-2 py-2.5 text-right font-medium text-gray-700">
+                      {day.regMinutes > 0 ? formatDecimalHours(day.regMinutes) : ''}
+                    </td>
+                    <td className="px-2 py-2.5 text-right font-medium text-orange-600">
+                      {day.otMinutes > 0 ? formatDecimalHours(day.otMinutes) : ''}
+                    </td>
+                    <td className={`px-3 py-2.5 text-right font-bold bg-blue-50/50 ${hasCorrection ? 'text-blue-700' : 'text-moja-blue'}`}>
+                      {day.netMinutes > 0 ? formatDecimalHours(day.netMinutes) : ''}
+                      {hasCorrection && <span className="ml-1 text-[9px] text-blue-500 align-super">*</span>}
+                    </td>
+                  </tr>
+                  {hasNotes && (
+                    <tr className={`border-b border-gray-100 ${hasPending ? 'bg-amber-50/30' : hasCorrection ? 'bg-blue-50/30' : ''}`}>
+                      <td colSpan={10} className="px-3 pb-2 pt-0">
+                        <div className="flex flex-wrap gap-1.5 pl-1">
+                          {sr?.pendingCorrection && (
+                            <span className="inline-flex items-center gap-1 text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium">
+                              <Clock className="w-2.5 h-2.5" />
+                              Pending: {sr.pendingCorrection.proposed_hours != null
+                                ? `${sr.pendingCorrection.proposed_hours}h`
+                                : `${formatTimeEST(sr.pendingCorrection.proposed_clock_in)} - ${formatTimeEST(sr.pendingCorrection.proposed_clock_out)}`
+                              }
+                              {sr.pendingCorrection.note && ` - ${sr.pendingCorrection.note}`}
+                            </span>
+                          )}
+                          {sr?.rejectedCorrection && (
+                            <span className="inline-flex items-center gap-1 text-[10px] bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-medium">
+                              <XCircle className="w-2.5 h-2.5" /> Rejected{sr.rejectedCorrection.rejection_reason ? `: ${sr.rejectedCorrection.rejection_reason}` : ''}
+                            </span>
+                          )}
+                          {sr?.correction?.note && (
+                            <span className="inline-flex items-center gap-1 text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">
+                              <Pencil className="w-2.5 h-2.5" /> {sr.correction.note}
+                            </span>
+                          )}
+                          {(sr?.notes || []).map(note => (
+                            <span key={note.id} className={`inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-medium ${
+                              note.status === 'resolved' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
+                            }`}>
+                              <MessageSquare className="w-2.5 h-2.5" /> {note.body}
+                              {note.resolution_comment && <span className="text-green-600 ml-1">- {note.resolution_comment}</span>}
+                            </span>
+                          ))}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </>
+              );
+            })() : day.shiftRows.map((sr, si) => {
+              const hasCorrection = !!sr.correction;
+              const hasPending = !!sr.pendingCorrection;
+              const hasRejected = !!sr.rejectedCorrection;
+              const hasNotes = sr.notes.length > 0 || !!sr.correction?.note || hasPending || hasRejected;
+              const isFirst = si === 0;
+              const isLast = si === day.shiftRows.length - 1;
+              return (
+                <React.Fragment key={sr.shift.id}>
+                  <tr
+                    className={`${isLast ? 'border-b border-gray-100' : ''} transition-colors ${
+                      hasPending ? 'bg-amber-50/50' :
+                      hasCorrection ? 'bg-blue-50/50' :
+                      isWeekend ? 'bg-gray-50/30' : 'hover:bg-gray-50/50'
+                    } ${canEdit ? 'cursor-pointer' : ''}`}
+                    onClick={() => { if (canEdit) onEditShift(sr.shift); }}
+                  >
+                    <td className="px-3 py-2.5 font-bold text-gray-700">{isFirst ? day.dayName : ''}</td>
+                    <td className="px-2 py-2.5 text-gray-600 whitespace-nowrap">
+                      <CellValue
+                        original={formatTimeEST(sr.shift.clock_in_time)}
+                        proposed={hasCorrection ? formatTimeEST(sr.correction!.proposed_clock_in) : undefined}
+                        changed={hasCorrection && sr.correction!.proposed_clock_in !== sr.correction!.original_clock_in}
+                      />
+                    </td>
+                    <td className="px-2 py-2.5 text-gray-500 whitespace-nowrap text-[11px]">
+                      {sr.breaks.length > 0 ? formatTimeEST(sr.breaks[0].break_start) : ''}
+                    </td>
+                    <td className="px-2 py-2.5 text-gray-500 whitespace-nowrap text-[11px]">
+                      {sr.breaks.length > 0 && sr.breaks[0].break_end ? formatTimeEST(sr.breaks[0].break_end) : ''}
+                    </td>
+                    <td className="px-2 py-2.5 text-center text-green-700 font-medium text-[11px]">
+                      {sr.breaks.length > 0 && sr.breaks[0].break_end ? (() => {
+                        const start = new Date(sr.breaks[0].break_start).getTime();
+                        const end = new Date(sr.breaks[0].break_end!).getTime();
+                        const mins = Math.round((end - start) / 60000);
+                        return mins > 0 ? formatHM(mins) : '';
+                      })() : ''}
+                    </td>
+                    <td className="px-2 py-2.5 text-gray-600 whitespace-nowrap">
+                      {sr.shift.clock_out_time ? (
+                        <CellValue
+                          original={formatTimeEST(sr.shift.clock_out_time)}
+                          proposed={hasCorrection ? formatTimeEST(sr.correction!.proposed_clock_out) : undefined}
+                          changed={hasCorrection && sr.correction!.proposed_clock_out !== sr.correction!.original_clock_out}
+                        />
+                      ) : (
+                        <span className="text-green-600 text-[10px] font-bold">ACTIVE</span>
+                      )}
+                    </td>
+                    <td className="px-2 py-2.5 text-center text-gray-400">-</td>
+                    {isFirst ? (
+                      <>
+                        <td className="px-2 py-2.5 text-right font-medium text-gray-700" rowSpan={rowCount}>
+                          {day.regMinutes > 0 ? formatDecimalHours(day.regMinutes) : ''}
+                        </td>
+                        <td className="px-2 py-2.5 text-right font-medium text-orange-600" rowSpan={rowCount}>
+                          {day.otMinutes > 0 ? formatDecimalHours(day.otMinutes) : ''}
+                        </td>
+                        <td className={`px-3 py-2.5 text-right font-bold bg-blue-50/50 text-moja-blue`} rowSpan={rowCount}>
+                          {day.netMinutes > 0 ? formatDecimalHours(day.netMinutes) : ''}
+                        </td>
+                      </>
+                    ) : null}
+                  </tr>
+                  {hasNotes && (
+                    <tr className={`border-b border-gray-100 ${hasPending ? 'bg-amber-50/30' : hasCorrection ? 'bg-blue-50/30' : ''}`}>
+                      <td colSpan={10} className="px-3 pb-2 pt-0">
+                        <div className="flex flex-wrap gap-1.5 pl-1">
+                          {sr.pendingCorrection && (
+                            <span className="inline-flex items-center gap-1 text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium">
+                              <Clock className="w-2.5 h-2.5" />
+                              Pending: {sr.pendingCorrection.proposed_hours != null
+                                ? `${sr.pendingCorrection.proposed_hours}h`
+                                : `${formatTimeEST(sr.pendingCorrection.proposed_clock_in)} - ${formatTimeEST(sr.pendingCorrection.proposed_clock_out)}`
+                              }
+                              {sr.pendingCorrection.note && ` - ${sr.pendingCorrection.note}`}
+                            </span>
+                          )}
+                          {sr.rejectedCorrection && (
+                            <span className="inline-flex items-center gap-1 text-[10px] bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-medium">
+                              <XCircle className="w-2.5 h-2.5" /> Rejected{sr.rejectedCorrection.rejection_reason ? `: ${sr.rejectedCorrection.rejection_reason}` : ''}
+                            </span>
+                          )}
+                          {sr.correction?.note && (
+                            <span className="inline-flex items-center gap-1 text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">
+                              <Pencil className="w-2.5 h-2.5" /> {sr.correction.note}
+                            </span>
+                          )}
+                          {sr.notes.map(note => (
+                            <span key={note.id} className={`inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-medium ${
+                              note.status === 'resolved' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
+                            }`}>
+                              <MessageSquare className="w-2.5 h-2.5" /> {note.body}
+                              {note.resolution_comment && <span className="text-green-600 ml-1">- {note.resolution_comment}</span>}
+                            </span>
+                          ))}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
+              );
+            })}
           </React.Fragment>
         );
       })}
       <tr className="bg-gray-100 border-t border-gray-200 font-bold text-xs">
-        <td colSpan={8} className="px-3 py-2 text-gray-600">{week.label} Subtotal</td>
+        <td colSpan={7} className="px-3 py-2 text-gray-600">{week.label} Subtotal</td>
         <td className="px-2 py-2 text-right text-gray-700">{formatDecimalHours(week.regMinutes)}</td>
         <td className="px-2 py-2 text-right text-orange-600">{formatDecimalHours(week.otMinutes)}</td>
         <td className="px-3 py-2 text-right text-moja-blue bg-blue-50">{formatDecimalHours(week.totalMinutes)}</td>

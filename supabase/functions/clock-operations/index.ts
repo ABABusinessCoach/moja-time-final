@@ -149,24 +149,11 @@ async function getWeeklyTotal(
 
   if (!logs || logs.length === 0) return 0;
   const grossMinutes = logs.reduce(
-    (sum: number, l: { duration_minutes: number }) => sum + (l.duration_minutes || 0),
+    (sum: number, l: { duration_minutes: number }) => sum + Math.max(0, l.duration_minutes || 0),
     0
   );
 
-  const logIds = logs.map((l: { id: string }) => l.id);
-  const { data: lunches } = await supabase
-    .from("break_logs")
-    .select("duration_minutes")
-    .in("clock_log_id", logIds)
-    .eq("break_type", "lunch")
-    .not("duration_minutes", "is", null);
-
-  const lunchMinutes = (lunches || []).reduce(
-    (sum: number, b: { duration_minutes: number }) => sum + (b.duration_minutes || 0),
-    0
-  );
-
-  return grossMinutes - lunchMinutes;
+  return grossMinutes;
 }
 
 async function verifyAdmin(
@@ -784,7 +771,7 @@ Deno.serve(async (req: Request) => {
         return json({ success: false, message: "PIN must be exactly 4 digits" }, 400);
       }
 
-      const type = break_type === "lunch" ? "lunch" : "break";
+      const type = "break";
 
       const { data: activeStaff } = await supabase
         .from("staff")
@@ -1031,24 +1018,16 @@ Deno.serve(async (req: Request) => {
       );
 
       const week1GrossMinutes = week1Logs.reduce(
-        (sum: number, l: { duration_minutes: number | null }) => sum + (l.duration_minutes || 0),
+        (sum: number, l: { duration_minutes: number | null }) => sum + Math.max(0, l.duration_minutes || 0),
         0
       );
       const week2GrossMinutes = week2Logs.reduce(
-        (sum: number, l: { duration_minutes: number | null }) => sum + (l.duration_minutes || 0),
+        (sum: number, l: { duration_minutes: number | null }) => sum + Math.max(0, l.duration_minutes || 0),
         0
       );
 
-      // Deduct only lunch (unpaid); paid breaks are NOT deducted
-      const week1LunchMins = allBreaks
-        .filter((b: { break_start: string; break_type: string }) => new Date(b.break_start) <= week1End && b.break_type === "lunch")
-        .reduce((sum: number, b: { duration_minutes: number | null }) => sum + (b.duration_minutes || 0), 0);
-      const week2LunchMins = allBreaks
-        .filter((b: { break_start: string; break_type: string }) => new Date(b.break_start) > week1End && b.break_type === "lunch")
-        .reduce((sum: number, b: { duration_minutes: number | null }) => sum + (b.duration_minutes || 0), 0);
-
-      const week1Minutes = week1GrossMinutes - week1LunchMins;
-      const week2Minutes = week2GrossMinutes - week2LunchMins;
+      const week1Minutes = week1GrossMinutes;
+      const week2Minutes = week2GrossMinutes;
       const totalMinutes = week1Minutes + week2Minutes;
 
       const { data: settings } = await supabase
@@ -1317,6 +1296,96 @@ Deno.serve(async (req: Request) => {
         .from("invitations")
         .update({ used: true })
         .eq("id", invitation.id);
+
+      return json({
+        success: true,
+        staff: { id: newStaff.id, name: newStaff.name },
+      });
+    }
+
+    // --- SELF-REGISTER WITH SIGNUP CODE ---
+    if (req.method === "POST" && path === "/self-register") {
+      const { signup_code, name, email, phone, pin } = await req.json();
+
+      if (!signup_code) {
+        return json({ success: false, message: "Signup code is required" }, 400);
+      }
+
+      if (!name || !name.trim()) {
+        return json({ success: false, message: "Name is required" }, 400);
+      }
+
+      if (!email || !isValidEmail(email)) {
+        return json({ success: false, message: "Valid email is required" }, 400);
+      }
+
+      if (!pin || pin.length !== 4 || !/^\d{4}$/.test(pin)) {
+        return json({ success: false, message: "PIN must be exactly 4 digits" }, 400);
+      }
+
+      // Validate signup code
+      const { data: codeSetting } = await supabase
+        .from("app_settings")
+        .select("value")
+        .eq("key", "signup_code")
+        .maybeSingle();
+
+      if (!codeSetting || !codeSetting.value) {
+        return json({ success: false, message: "Self-registration is not enabled" }, 403);
+      }
+
+      const expectedCode = typeof codeSetting.value === "string" ? codeSetting.value : String(codeSetting.value);
+      if (signup_code.trim().toUpperCase() !== expectedCode.trim().toUpperCase()) {
+        return json({ success: false, message: "Invalid signup code" }, 403);
+      }
+
+      // Check if email already exists
+      const { data: existingByEmail } = await supabase
+        .from("staff")
+        .select("id")
+        .eq("email", email)
+        .eq("is_active", true)
+        .maybeSingle();
+
+      if (existingByEmail) {
+        return json({ success: false, message: "An account with this email already exists" }, 409);
+      }
+
+      // Check PIN uniqueness
+      const { data: existingStaff } = await supabase
+        .from("staff")
+        .select("id, pin_hash")
+        .eq("is_active", true);
+
+      if (existingStaff && existingStaff.length > 0) {
+        for (const staff of existingStaff) {
+          const isDuplicate = await bcrypt.compare(pin, staff.pin_hash);
+          if (isDuplicate) {
+            return json({ success: false, message: "This PIN is already in use. Please choose a different PIN." }, 409);
+          }
+        }
+      }
+
+      const hash = await bcrypt.hash(pin, 10);
+
+      const { data: newStaff, error: staffError } = await supabase
+        .from("staff")
+        .insert({
+          name: name.trim(),
+          email: email.trim().toLowerCase(),
+          phone: phone || "",
+          pin_hash: hash,
+        })
+        .select()
+        .maybeSingle();
+
+      if (staffError) {
+        return json({ success: false, message: staffError.message }, 400);
+      }
+
+      if (!newStaff) {
+        return json({ success: false, message: "Failed to create account" }, 500);
+      }
 
       return json({
         success: true,

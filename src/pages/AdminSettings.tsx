@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { Settings, Save, UserPlus, Trash2, X, Shield } from 'lucide-react';
+import { Settings, Save, UserPlus, Trash2, X, Shield, Link, Copy, Check } from 'lucide-react';
 import { Toast } from '../components/Toast';
 
 interface AdminUser {
@@ -19,10 +19,12 @@ export function AdminSettings() {
     expected_start_time: '09:00',
     daily_summary_email: false,
     overtime_warning_threshold: 35,
+    signup_code: '',
   });
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [copiedLink, setCopiedLink] = useState(false);
 
   // Admin management state
   const [admins, setAdmins] = useState<AdminUser[]>([]);
@@ -152,6 +154,7 @@ export function AdminSettings() {
           expected_start_time: result.settings.expected_start_time ?? '09:00',
           daily_summary_email: result.settings.daily_summary_email ?? false,
           overtime_warning_threshold: result.settings.overtime_warning_threshold ?? 35,
+          signup_code: result.settings.signup_code ?? '',
         }));
       }
     } catch {
@@ -175,6 +178,7 @@ export function AdminSettings() {
         expected_start_time: settings.expected_start_time,
         daily_summary_email: settings.daily_summary_email,
         overtime_warning_threshold: Number(settings.overtime_warning_threshold),
+        signup_code: settings.signup_code.trim().toUpperCase() || null,
       };
 
       const response = await fetch(
@@ -317,6 +321,55 @@ export function AdminSettings() {
             <p className="text-xs text-moja-blue/40 font-semibold">Receive a daily email with attendance summary</p>
           </div>
         </label>
+      </div>
+
+      {/* Employee Self-Signup */}
+      <div className="bg-white rounded-xl border border-gray-100 p-6 shadow-sm space-y-5">
+        <div className="flex items-center gap-3">
+          <Link className="w-5 h-5 text-moja-blue" />
+          <h3 className="text-lg font-bold text-moja-blue">Employee Self-Signup</h3>
+        </div>
+
+        <p className="text-sm text-moja-blue/60 font-medium">
+          Share the signup link and code with new employees so they can create their own account.
+        </p>
+
+        <div>
+          <label className="block text-sm font-bold text-moja-blue mb-1">Signup Code</label>
+          <input
+            type="text"
+            value={settings.signup_code}
+            onChange={(e) => setSettings(s => ({ ...s, signup_code: e.target.value.toUpperCase() }))}
+            className="w-full h-12 px-4 font-mono font-bold text-lg tracking-wider text-moja-blue border-2 border-moja-blue/20 rounded-xl focus:border-moja-orange focus:outline-none"
+            placeholder="e.g. MOJA2026"
+          />
+          <p className="text-xs text-moja-blue/40 font-semibold mt-1">Employees must enter this code to register. Leave blank to disable self-signup.</p>
+        </div>
+
+        {settings.signup_code && (
+          <div className="bg-moja-bg rounded-xl p-4 border border-moja-blue/10">
+            <label className="block text-xs font-bold text-moja-blue/60 mb-2 uppercase tracking-wide">Shareable Signup Link</label>
+            <div className="flex items-center gap-2">
+              <code className="flex-1 text-sm font-mono font-semibold text-moja-blue bg-white px-3 py-2.5 rounded-lg border border-moja-blue/10 truncate">
+                {window.location.origin + window.location.pathname + '#/signup'}
+              </code>
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(window.location.origin + window.location.pathname + '#/signup');
+                  setCopiedLink(true);
+                  setTimeout(() => setCopiedLink(false), 2000);
+                }}
+                className="flex-shrink-0 inline-flex items-center gap-1.5 px-4 py-2.5 bg-moja-blue text-white rounded-lg font-bold text-sm hover:bg-moja-blue/90 active:scale-[0.98] transition-all"
+              >
+                {copiedLink ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                {copiedLink ? 'Copied!' : 'Copy'}
+              </button>
+            </div>
+            <p className="text-xs text-moja-blue/50 font-medium mt-2">
+              Send this link along with the code <span className="font-bold text-moja-orange">{settings.signup_code}</span> to new employees.
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Admin Accounts */}

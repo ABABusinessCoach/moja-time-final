@@ -3,6 +3,7 @@ export interface Staff {
   name: string;
   email: string;
   phone: string;
+  employee_number: string | null;
   is_active: boolean;
   is_clocked_in: boolean;
   is_on_break: boolean;
@@ -28,7 +29,7 @@ export interface BreakLog {
   staff_id: string;
   break_start: string;
   break_end: string | null;
-  break_type: 'break' | 'lunch';
+  break_type: 'break';
   duration_minutes: number | null;
   created_at: string;
 }

@@ -160,15 +160,9 @@ export function WeeklyReports() {
           dailyRaw[dayIndex] += rawMins;
         }
         if (corrMap.has(log.id)) {
-          const logLunchMins = breakLogs
-            .filter(b => b.clock_log_id === log.id && b.break_type === 'lunch')
-            .reduce((s, b) => s + (b.duration_minutes || 0), 0);
-          dailyFinal[dayIndex] += Math.max(0, (corrMap.get(log.id) || 0) - logLunchMins);
+          dailyFinal[dayIndex] += Math.max(0, corrMap.get(log.id) || 0);
         } else if (log.duration_minutes) {
-          const logLunchMins = breakLogs
-            .filter(b => b.clock_log_id === log.id && b.break_type === 'lunch')
-            .reduce((s, b) => s + (b.duration_minutes || 0), 0);
-          dailyFinal[dayIndex] += (log.duration_minutes - logLunchMins);
+          dailyFinal[dayIndex] += log.duration_minutes;
         }
       });
 
@@ -280,13 +274,15 @@ export function WeeklyReports() {
             const breakMins = logBreaks
               .filter(b => b.break_type === 'break')
               .reduce((sum, b) => sum + (b.duration_minutes || 0), 0);
-            const lunchMins = logBreaks
-              .filter(b => b.break_type === 'lunch')
-              .reduce((sum, b) => sum + (b.duration_minutes || 0), 0);
+
+            const lunchBreak = logBreaks.find(b => b.break_type === 'break' && b.break_end);
+            const lunchMins = lunchBreak && lunchBreak.break_end
+              ? Math.round((new Date(lunchBreak.break_end).getTime() - new Date(lunchBreak.break_start).getTime()) / 60000)
+              : 0;
 
             const finalMinutes = rangeCorrMap.has(log.id)
-              ? Math.max(0, (rangeCorrMap.get(log.id) || 0) - lunchMins)
-              : (log.duration_minutes ? Math.max(0, log.duration_minutes - lunchMins) : 0);
+              ? Math.max(0, rangeCorrMap.get(log.id) || 0)
+              : (log.duration_minutes ? Math.max(0, log.duration_minutes) : 0);
             weekTotal += finalMinutes;
             staffTotalRaw += rawMinutes;
 

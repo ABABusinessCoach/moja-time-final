@@ -147,20 +147,8 @@ Deno.serve(async (req: Request) => {
         (sum: number, l: { duration_minutes: number | null }) => sum + (l.duration_minutes || 0), 0
       );
 
-      // Deduct only lunch (unpaid); paid breaks are NOT deducted
-      const { data: lunchBreaks } = await supabase
-        .from("break_logs")
-        .select("duration_minutes, break_start")
-        .eq("staff_id", staff.id)
-        .eq("break_type", "lunch")
-        .gte("break_start", periodStart + "T00:00:00")
-        .lte("break_start", periodEnd + "T23:59:59");
-
-      const lunchMinutes = (lunchBreaks || []).reduce(
-        (sum: number, b: { duration_minutes: number | null }) => sum + (b.duration_minutes || 0), 0
-      );
-
-      const totalMinutes = grossMinutes - lunchMinutes;
+      // All breaks are paid; no deduction
+      const totalMinutes = grossMinutes;
       const totalHours = Math.round((totalMinutes / 60) * 100) / 100;
 
       // Overtime
@@ -180,11 +168,7 @@ Deno.serve(async (req: Request) => {
         (l: { clock_in_time: string }) => l.clock_in_time <= week1EndStr + "T23:59:59"
       ).reduce((sum: number, l: { duration_minutes: number | null }) => sum + (l.duration_minutes || 0), 0);
 
-      const week1LunchMin = (lunchBreaks || []).filter(
-        (b: { break_start: string }) => b.break_start <= week1EndStr + "T23:59:59"
-      ).reduce((sum: number, b: { duration_minutes: number | null }) => sum + (b.duration_minutes || 0), 0);
-
-      const week1Minutes = week1GrossMin - week1LunchMin;
+      const week1Minutes = week1GrossMin;
       const week2Minutes = totalMinutes - week1Minutes;
 
       const week1OT = Math.max(0, (week1Minutes / 60) - overtimeThreshold);
@@ -255,21 +239,12 @@ Deno.serve(async (req: Request) => {
 
           let startTime = "";
           let endTime = "";
-          let lunchOut = "";
-          let lunchIn = "";
           let netMins = 0;
 
           if (shift) {
             startTime = fmtTime(shift.clock_in_time);
             endTime = shift.clock_out_time ? fmtTime(shift.clock_out_time) : "open";
-            const shiftBreaks = (breaks || []).filter((b: { clock_log_id: string }) => b.clock_log_id === shift.id);
-            const lunchMin = shiftBreaks.filter((b: { break_type: string }) => b.break_type === "lunch").reduce((sum: number, b: { duration_minutes: number | null }) => sum + (b.duration_minutes || 0), 0);
-            netMins = Math.max(0, (shift.duration_minutes || 0) - lunchMin);
-            const lunch = shiftBreaks.find((b: { break_type: string }) => b.break_type === "lunch");
-            if (lunch) {
-              lunchOut = fmtTime(lunch.break_start);
-              lunchIn = lunch.break_end ? fmtTime(lunch.break_end) : "";
-            }
+            netMins = shift.duration_minutes || 0;
           }
 
           weekTotal += netMins;
@@ -277,8 +252,6 @@ Deno.serve(async (req: Request) => {
           tableRows += `<tr style="background:${bgColor};border-bottom:1px solid #f1f5f9;">
             <td style="padding:6px 12px;font-weight:600;font-size:13px;color:#374151;">${DAY_NAMES[d]}</td>
             <td style="padding:6px 8px;font-size:13px;color:#4b5563;">${startTime}</td>
-            <td style="padding:6px 8px;font-size:12px;color:#6b7280;">${lunchOut}</td>
-            <td style="padding:6px 8px;font-size:12px;color:#6b7280;">${lunchIn}</td>
             <td style="padding:6px 8px;font-size:13px;color:#4b5563;">${endTime}</td>
             <td style="padding:6px 8px;font-size:13px;color:#374151;font-weight:600;text-align:right;">${fmtDec(netMins)}</td>
           </tr>`;
@@ -301,8 +274,6 @@ Deno.serve(async (req: Request) => {
             <tr style="background:#355574;">
               <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:white;">Day</th>
               <th style="padding:10px 8px;text-align:left;font-size:12px;font-weight:600;color:white;">Start</th>
-              <th style="padding:10px 8px;text-align:left;font-size:11px;font-weight:600;color:rgba(255,255,255,0.8);">Lunch Out</th>
-              <th style="padding:10px 8px;text-align:left;font-size:11px;font-weight:600;color:rgba(255,255,255,0.8);">Lunch In</th>
               <th style="padding:10px 8px;text-align:left;font-size:12px;font-weight:600;color:white;">End</th>
               <th style="padding:10px 8px;text-align:right;font-size:12px;font-weight:600;color:white;">Hours</th>
             </tr>
@@ -490,20 +461,8 @@ Deno.serve(async (req: Request) => {
           (sum: number, l: { duration_minutes: number | null }) => sum + (l.duration_minutes || 0), 0
         );
 
-        // Deduct only lunch (unpaid); paid breaks are NOT deducted
-        const { data: staffLunches } = await supabase
-          .from("break_logs")
-          .select("duration_minutes, break_start")
-          .eq("staff_id", staff.id)
-          .eq("break_type", "lunch")
-          .gte("break_start", periodStart + "T00:00:00")
-          .lte("break_start", periodEnd + "T23:59:59");
-
-        const totalLunchMinutes = (staffLunches || []).reduce(
-          (sum: number, b: { duration_minutes: number | null }) => sum + (b.duration_minutes || 0), 0
-        );
-
-        const totalMinutes = grossMinutes - totalLunchMinutes;
+        // All breaks are paid; no deduction
+        const totalMinutes = grossMinutes;
         const totalHours = Math.round((totalMinutes / 60) * 100) / 100;
 
         // Calculate weekly overtime
@@ -516,11 +475,7 @@ Deno.serve(async (req: Request) => {
           (l: { clock_in_time: string }) => l.clock_in_time <= week1EndStr + "T23:59:59"
         ).reduce((sum: number, l: { duration_minutes: number | null }) => sum + (l.duration_minutes || 0), 0);
 
-        const week1LunchMinutes = (staffLunches || []).filter(
-          (b: { break_start: string }) => b.break_start <= week1EndStr + "T23:59:59"
-        ).reduce((sum: number, b: { duration_minutes: number | null }) => sum + (b.duration_minutes || 0), 0);
-
-        const week1Minutes = week1GrossMinutes - week1LunchMinutes;
+        const week1Minutes = week1GrossMinutes;
         const week2Minutes = totalMinutes - week1Minutes;
 
         const week1OT = Math.max(0, (week1Minutes / 60) - overtimeThreshold);
@@ -638,7 +593,7 @@ Deno.serve(async (req: Request) => {
 
       const { data: staff } = await supabase
         .from("staff")
-        .select("name, email")
+        .select("name, email, employee_number")
         .eq("id", report.staff_id)
         .maybeSingle();
 
@@ -685,6 +640,7 @@ Deno.serve(async (req: Request) => {
           ...report,
           staff_name: staff?.name,
           staff_email: staff?.email,
+          employee_number: staff?.employee_number || null,
           pay_period: payPeriod,
         },
         shifts: shifts || [],
@@ -1029,9 +985,9 @@ Deno.serve(async (req: Request) => {
 
       if (corrErr) return json({ success: false, message: corrErr.message }, 500);
 
-      // Handle break/lunch time edits
+      // Handle break time edits
       if (break_edits) {
-        const { break_start, break_end, lunch_start, lunch_end } = break_edits;
+        const { break_start, break_end } = break_edits;
 
         // Update or create regular break
         if (break_start || break_end) {
@@ -1039,7 +995,7 @@ Deno.serve(async (req: Request) => {
             .from("break_logs")
             .select("id")
             .eq("clock_log_id", clock_log_id)
-            .neq("break_type", "lunch")
+            .eq("break_type", "break")
             .maybeSingle();
 
           const breakDuration = (break_start && break_end)
@@ -1066,43 +1022,7 @@ Deno.serve(async (req: Request) => {
           // If both cleared, delete existing break
           await supabase.from("break_logs").delete()
             .eq("clock_log_id", clock_log_id)
-            .neq("break_type", "lunch");
-        }
-
-        // Update or create lunch break
-        if (lunch_start || lunch_end) {
-          const { data: existingLunch } = await supabase
-            .from("break_logs")
-            .select("id")
-            .eq("clock_log_id", clock_log_id)
-            .eq("break_type", "lunch")
-            .maybeSingle();
-
-          const lunchDuration = (lunch_start && lunch_end)
-            ? Math.round((new Date(lunch_end).getTime() - new Date(lunch_start).getTime()) / 60000)
-            : null;
-
-          if (existingLunch) {
-            await supabase.from("break_logs").update({
-              break_start: lunch_start || undefined,
-              break_end: lunch_end || undefined,
-              duration_minutes: lunchDuration,
-            }).eq("id", existingLunch.id);
-          } else if (lunch_start) {
-            await supabase.from("break_logs").insert({
-              clock_log_id,
-              staff_id: report.staff_id,
-              break_start: lunch_start,
-              break_end: lunch_end || null,
-              duration_minutes: lunchDuration,
-              break_type: "lunch",
-            });
-          }
-        } else {
-          // If both cleared, delete existing lunch
-          await supabase.from("break_logs").delete()
-            .eq("clock_log_id", clock_log_id)
-            .eq("break_type", "lunch");
+            .eq("break_type", "break");
         }
       }
 
@@ -1128,25 +1048,11 @@ Deno.serve(async (req: Request) => {
 
       const corrMap = new Map((allCorrections || []).map((c: { clock_log_id: string; proposed_duration_minutes: number }) => [c.clock_log_id, c.proposed_duration_minutes]));
 
-      // Deduct lunch breaks for all shifts
-      const { data: allBreaks } = await supabase
-        .from("break_logs")
-        .select("clock_log_id, duration_minutes, break_type")
-        .eq("staff_id", report.staff_id)
-        .eq("break_type", "lunch")
-        .gte("break_start", ppData!.start_date + "T00:00:00")
-        .lte("break_start", ppData!.end_date + "T23:59:59");
-
-      const lunchByShift = new Map<string, number>();
-      for (const b of (allBreaks || [])) {
-        lunchByShift.set(b.clock_log_id, (lunchByShift.get(b.clock_log_id) || 0) + (b.duration_minutes || 0));
-      }
-
+      // Recalculate total hours using only approved corrections
       let totalMinutes = 0;
       for (const s of (allShifts || [])) {
         const gross = corrMap.has(s.id) ? (corrMap.get(s.id) || 0) : (s.duration_minutes || 0);
-        const lunch = lunchByShift.get(s.id) || 0;
-        totalMinutes += Math.max(0, gross - lunch);
+        totalMinutes += gross;
       }
 
       const netHours = Math.round(((totalMinutes) / 60) * 100) / 100;
@@ -1156,6 +1062,220 @@ Deno.serve(async (req: Request) => {
         .eq("id", report.id);
 
       return json({ success: true, new_total_hours: netHours });
+    }
+
+    // --- ADD SHIFT (employee proposes hours for a day with no clock data) ---
+    if (req.method === "POST" && path === "/add-shift") {
+      const { access_token, date, proposed_hours, proposed_clock_in, proposed_clock_out, break_start, break_end, note } = await req.json();
+      if (!access_token) return json({ success: false, message: "Token required" }, 400);
+      if (!date) return json({ success: false, message: "Date required" }, 400);
+      if (!note?.trim()) return json({ success: false, message: "Reason is required" }, 400);
+
+      const { data: report } = await supabase
+        .from("timecard_reports")
+        .select("id, status, staff_id, pay_period_id")
+        .eq("access_token", access_token)
+        .maybeSingle();
+
+      if (!report) return json({ success: false, message: "Report not found" }, 404);
+      if (report.status === "approved" || report.status === "employee_approved") {
+        return json({ success: false, message: "Report already approved" }, 400);
+      }
+
+      // Calculate times and duration
+      let clockIn: string;
+      let clockOut: string;
+      let durationMins: number;
+
+      if (proposed_hours != null && proposed_hours > 0) {
+        clockIn = `${date}T09:00:00-04:00`;
+        clockOut = `${date}T${(9 + proposed_hours).toString().padStart(2, '0')}:00:00-04:00`;
+        durationMins = Math.round(proposed_hours * 60);
+      } else if (proposed_clock_in && proposed_clock_out) {
+        clockIn = proposed_clock_in;
+        clockOut = proposed_clock_out;
+        durationMins = Math.round((new Date(clockOut).getTime() - new Date(clockIn).getTime()) / 60000);
+        if (durationMins < 0) durationMins = 0;
+        // Subtract break time from duration
+        if (break_start && break_end) {
+          const breakMins = Math.round((new Date(break_end).getTime() - new Date(break_start).getTime()) / 60000);
+          if (breakMins > 0) durationMins = Math.max(0, durationMins - breakMins);
+        }
+      } else {
+        return json({ success: false, message: "Either proposed_hours or clock in/out times required" }, 400);
+      }
+
+      // Create a clock_log entry for this day
+      const { data: newShift, error: shiftErr } = await supabase
+        .from("clock_logs")
+        .insert({
+          staff_id: report.staff_id,
+          clock_in_time: clockIn,
+          clock_out_time: clockOut,
+          duration_minutes: durationMins,
+          notes: `[Manual entry] ${note.trim()}`,
+        })
+        .select("id")
+        .single();
+
+      if (shiftErr) return json({ success: false, message: shiftErr.message }, 500);
+
+      // Create break log if provided
+      if (break_start && break_end) {
+        const breakDuration = Math.round((new Date(break_end).getTime() - new Date(break_start).getTime()) / 60000);
+        await supabase.from("break_logs").insert({
+          clock_log_id: newShift.id,
+          staff_id: report.staff_id,
+          break_start,
+          break_end,
+          duration_minutes: breakDuration > 0 ? breakDuration : 0,
+          break_type: "break",
+        });
+      }
+
+      // Create a pending correction so admin can approve it
+      await supabase
+        .from("timecard_corrections")
+        .insert({
+          timecard_report_id: report.id,
+          clock_log_id: newShift.id,
+          original_clock_in: clockIn,
+          original_clock_out: clockOut,
+          proposed_clock_in: clockIn,
+          proposed_clock_out: clockOut,
+          proposed_duration_minutes: durationMins,
+          proposed_hours: proposed_hours != null ? proposed_hours : null,
+          note: note.trim(),
+          approval_status: "pending",
+        });
+
+      // Mark report as needing attention
+      await supabase
+        .from("timecard_reports")
+        .update({ status: "has_notes" })
+        .eq("id", report.id);
+
+      return json({ success: true, clock_log_id: newShift.id });
+    }
+
+    // --- ADMIN ADD SHIFT (admin adds hours directly for an empty day) ---
+    if (req.method === "POST" && path === "/admin-add-shift") {
+      const authHeader = req.headers.get("Authorization")?.replace("Bearer ", "");
+      if (!authHeader) return json({ success: false, message: "Unauthorized" }, 401);
+
+      const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+      const { data: { user } } = await createClient(supabaseUrl, anonKey, {
+        global: { headers: { Authorization: `Bearer ${authHeader}` } }
+      }).auth.getUser();
+      if (!user) return json({ success: false, message: "Unauthorized" }, 401);
+
+      const { data: admin } = await supabase
+        .from("admins")
+        .select("id")
+        .eq("id", user.id)
+        .maybeSingle();
+      if (!admin) return json({ success: false, message: "Not an admin" }, 403);
+
+      const { report_id, date, proposed_clock_in, proposed_clock_out, proposed_hours, break_start, break_end, note } = await req.json();
+      if (!report_id || !date) return json({ success: false, message: "report_id and date required" }, 400);
+
+      const { data: report } = await supabase
+        .from("timecard_reports")
+        .select("id, staff_id, pay_period_id")
+        .eq("id", report_id)
+        .maybeSingle();
+
+      if (!report) return json({ success: false, message: "Report not found" }, 404);
+
+      let clockIn: string;
+      let clockOut: string;
+      let durationMins: number;
+
+      if (proposed_hours != null && proposed_hours > 0) {
+        clockIn = `${date}T09:00:00-04:00`;
+        clockOut = `${date}T${(9 + proposed_hours).toString().padStart(2, '0')}:00:00-04:00`;
+        durationMins = Math.round(proposed_hours * 60);
+      } else if (proposed_clock_in && proposed_clock_out) {
+        clockIn = proposed_clock_in;
+        clockOut = proposed_clock_out;
+        durationMins = Math.round((new Date(clockOut).getTime() - new Date(clockIn).getTime()) / 60000);
+        if (durationMins < 0) durationMins = 0;
+        // Subtract break time from duration
+        if (break_start && break_end) {
+          const breakMins = Math.round((new Date(break_end).getTime() - new Date(break_start).getTime()) / 60000);
+          if (breakMins > 0) durationMins = Math.max(0, durationMins - breakMins);
+        }
+      } else {
+        return json({ success: false, message: "Either proposed_hours or clock in/out times required" }, 400);
+      }
+
+      // Create clock_log directly
+      const { data: newShift, error: shiftErr } = await supabase
+        .from("clock_logs")
+        .insert({
+          staff_id: report.staff_id,
+          clock_in_time: clockIn,
+          clock_out_time: clockOut,
+          duration_minutes: durationMins,
+          notes: note?.trim() ? `[Admin entry] ${note.trim()}` : "[Admin entry]",
+        })
+        .select("id")
+        .single();
+
+      if (shiftErr) return json({ success: false, message: shiftErr.message }, 500);
+
+      // Create break log if provided
+      if (break_start && break_end) {
+        const breakDuration = Math.round((new Date(break_end).getTime() - new Date(break_start).getTime()) / 60000);
+        await supabase.from("break_logs").insert({
+          clock_log_id: newShift.id,
+          staff_id: report.staff_id,
+          break_start,
+          break_end,
+          duration_minutes: breakDuration > 0 ? breakDuration : 0,
+          break_type: "break",
+        });
+      }
+
+      // Create auto-approved correction for record-keeping
+      await supabase
+        .from("timecard_corrections")
+        .insert({
+          timecard_report_id: report.id,
+          clock_log_id: newShift.id,
+          original_clock_in: clockIn,
+          original_clock_out: clockOut,
+          proposed_clock_in: clockIn,
+          proposed_clock_out: clockOut,
+          proposed_duration_minutes: durationMins,
+          proposed_hours: proposed_hours != null ? proposed_hours : null,
+          note: note?.trim() || "Admin manual entry",
+          approval_status: "approved",
+          approved_by: admin.id,
+          approved_at: new Date().toISOString(),
+        });
+
+      // Recalculate total hours
+      const { data: payPeriod } = await supabase
+        .from("pay_periods")
+        .select("start_date, end_date")
+        .eq("id", report.pay_period_id)
+        .maybeSingle();
+
+      if (payPeriod) {
+        const { data: allShifts } = await supabase
+          .from("clock_logs")
+          .select("id, duration_minutes")
+          .eq("staff_id", report.staff_id)
+          .gte("clock_in_time", payPeriod.start_date + "T00:00:00")
+          .lte("clock_in_time", payPeriod.end_date + "T23:59:59");
+
+        const totalMins = (allShifts || []).reduce((sum: number, s: { duration_minutes: number | null }) => sum + Math.max(0, s.duration_minutes || 0), 0);
+        const netHours = Math.round((totalMins / 60) * 100) / 100;
+        await supabase.from("timecard_reports").update({ total_hours: netHours }).eq("id", report.id);
+      }
+
+      return json({ success: true, clock_log_id: newShift.id });
     }
 
     // --- APPROVE EMPLOYEE CORRECTION (admin approves a pending correction) ---
@@ -1222,24 +1342,10 @@ Deno.serve(async (req: Request) => {
 
       const corrMap2 = new Map((approvedCorrs || []).map((c: { clock_log_id: string; proposed_duration_minutes: number }) => [c.clock_log_id, c.proposed_duration_minutes]));
 
-      const { data: allBreaks2 } = await supabase
-        .from("break_logs")
-        .select("clock_log_id, duration_minutes, break_type")
-        .eq("staff_id", report!.staff_id)
-        .eq("break_type", "lunch")
-        .gte("break_start", ppData2!.start_date + "T00:00:00")
-        .lte("break_start", ppData2!.end_date + "T23:59:59");
-
-      const lunchByShift2 = new Map<string, number>();
-      for (const b of (allBreaks2 || [])) {
-        lunchByShift2.set(b.clock_log_id, (lunchByShift2.get(b.clock_log_id) || 0) + (b.duration_minutes || 0));
-      }
-
       let totalMin = 0;
       for (const s of (allShifts2 || [])) {
         const gross = corrMap2.has(s.id) ? (corrMap2.get(s.id) || 0) : (s.duration_minutes || 0);
-        const lunch = lunchByShift2.get(s.id) || 0;
-        totalMin += Math.max(0, gross - lunch);
+        totalMin += gross;
       }
 
       const newHours = Math.round(((totalMin) / 60) * 100) / 100;
@@ -1328,7 +1434,7 @@ Deno.serve(async (req: Request) => {
 
       const { data: staff } = await supabase
         .from("staff")
-        .select("name, email")
+        .select("name, email, employee_number")
         .eq("id", report.staff_id)
         .maybeSingle();
 
@@ -1418,29 +1524,19 @@ Deno.serve(async (req: Request) => {
 
                 let startTime = "";
                 let endTime = "";
-                let lunchOut = "";
-                let lunchIn = "";
                 let netMins = 0;
 
                 if (shift) {
                   const corr = corrMap.get(shift.id);
-                  const shiftBreaks = (breaks || []).filter((b: { clock_log_id: string }) => b.clock_log_id === shift.id);
-                  const lunchMin = shiftBreaks.filter((b: { break_type: string }) => b.break_type === "lunch").reduce((sum: number, b: { duration_minutes: number | null }) => sum + (b.duration_minutes || 0), 0);
 
                   if (corr) {
                     startTime = fmtTimeEST(corr.proposed_clock_in);
                     endTime = fmtTimeEST(corr.proposed_clock_out);
-                    netMins = Math.max(0, (corr.proposed_duration_minutes || 0) - lunchMin);
+                    netMins = corr.proposed_duration_minutes || 0;
                   } else {
                     startTime = fmtTimeEST(shift.clock_in_time);
                     endTime = shift.clock_out_time ? fmtTimeEST(shift.clock_out_time) : "open";
-                    netMins = Math.max(0, (shift.duration_minutes || 0) - lunchMin);
-                  }
-
-                  const lunch = shiftBreaks.find((b: { break_type: string }) => b.break_type === "lunch");
-                  if (lunch) {
-                    lunchOut = fmtTimeEST(lunch.break_start);
-                    lunchIn = lunch.break_end ? fmtTimeEST(lunch.break_end) : "";
+                    netMins = shift.duration_minutes || 0;
                   }
                 }
 
@@ -1450,8 +1546,6 @@ Deno.serve(async (req: Request) => {
                 tableRows += `<tr style="background:${bgColor};border-bottom:1px solid #f1f5f9;">
                   <td style="padding:6px 12px;font-weight:600;font-size:13px;color:#374151;">${DAY_NAMES[d]}</td>
                   <td style="padding:6px 8px;font-size:13px;color:#4b5563;">${startTime}</td>
-                  <td style="padding:6px 8px;font-size:12px;color:#6b7280;">${lunchOut}</td>
-                  <td style="padding:6px 8px;font-size:12px;color:#6b7280;">${lunchIn}</td>
                   <td style="padding:6px 8px;font-size:13px;color:#4b5563;">${endTime}</td>
                   <td style="padding:6px 8px;font-size:13px;color:#374151;font-weight:600;text-align:right;">${fmtDecimal(netMins)}</td>
                   <td style="padding:6px 8px;font-size:13px;color:#ea580c;font-weight:600;text-align:right;"></td>
@@ -1485,8 +1579,6 @@ Deno.serve(async (req: Request) => {
                   <tr style="background:#355574;">
                     <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:white;">Day</th>
                     <th style="padding:10px 8px;text-align:left;font-size:12px;font-weight:600;color:white;">Start</th>
-                    <th style="padding:10px 8px;text-align:left;font-size:11px;font-weight:600;color:rgba(255,255,255,0.8);">Lunch Out</th>
-                    <th style="padding:10px 8px;text-align:left;font-size:11px;font-weight:600;color:rgba(255,255,255,0.8);">Lunch In</th>
                     <th style="padding:10px 8px;text-align:left;font-size:12px;font-weight:600;color:white;">End</th>
                     <th style="padding:10px 8px;text-align:right;font-size:12px;font-weight:600;color:white;">Reg</th>
                     <th style="padding:10px 8px;text-align:right;font-size:12px;font-weight:600;color:#fdba74;">OT</th>
@@ -1621,7 +1713,7 @@ Deno.serve(async (req: Request) => {
         .select(`
           id, staff_id, pay_period_id, total_hours, overtime_hours, status, generated_at,
           pay_periods (start_date, end_date),
-          staff (name, email)
+          staff (name, email, employee_number)
         `)
         .in("status", ["has_notes", "pending_review", "employee_approved"])
         .order("generated_at", { ascending: false });
@@ -1639,7 +1731,6 @@ Deno.serve(async (req: Request) => {
         let shift_count = 0;
         let has_open_shift = false;
         let live_total_minutes = 0;
-        let live_lunch_minutes = 0;
 
         if (pp) {
           const { data: shifts } = await supabase
@@ -1651,17 +1742,7 @@ Deno.serve(async (req: Request) => {
 
           shift_count = shifts?.length || 0;
           has_open_shift = (shifts || []).some((s: { clock_out_time: string | null }) => !s.clock_out_time);
-          live_total_minutes = (shifts || []).reduce((sum: number, s: { duration_minutes: number | null }) => sum + (s.duration_minutes || 0), 0);
-
-          const { data: breaks } = await supabase
-            .from("break_logs")
-            .select("duration_minutes")
-            .eq("staff_id", report.staff_id)
-            .eq("break_type", "lunch")
-            .gte("break_start", pp.start_date + "T00:00:00")
-            .lte("break_start", pp.end_date + "T23:59:59");
-
-          live_lunch_minutes = (breaks || []).reduce((sum: number, b: { duration_minutes: number | null }) => sum + (b.duration_minutes || 0), 0);
+          live_total_minutes = (shifts || []).reduce((sum: number, s: { duration_minutes: number | null }) => sum + Math.max(0, s.duration_minutes || 0), 0);
         }
 
         reportsWithLiveData.push({
@@ -1669,7 +1750,7 @@ Deno.serve(async (req: Request) => {
           notes: notes || [],
           shift_count,
           has_open_shift,
-          live_total_hours: Math.round(((live_total_minutes - live_lunch_minutes) / 60) * 100) / 100,
+          live_total_hours: Math.round((live_total_minutes / 60) * 100) / 100,
         });
       }
 
@@ -1699,7 +1780,7 @@ Deno.serve(async (req: Request) => {
         .select(`
           id, staff_id, pay_period_id, total_hours, overtime_hours, status, generated_at, approved_at, admin_approved_at, admin_approved_by,
           pay_periods (start_date, end_date, status),
-          staff (name, email)
+          staff (name, email, employee_number)
         `)
         .eq("status", "approved")
         .order("generated_at", { ascending: false })
@@ -1712,7 +1793,6 @@ Deno.serve(async (req: Request) => {
         let shift_count = 0;
         let has_open_shift = false;
         let live_total_minutes = 0;
-        let live_lunch_minutes = 0;
 
         if (pp) {
           const { data: shifts } = await supabase
@@ -1724,24 +1804,14 @@ Deno.serve(async (req: Request) => {
 
           shift_count = shifts?.length || 0;
           has_open_shift = (shifts || []).some((s: { clock_out_time: string | null }) => !s.clock_out_time);
-          live_total_minutes = (shifts || []).reduce((sum: number, s: { duration_minutes: number | null }) => sum + (s.duration_minutes || 0), 0);
-
-          const { data: breaks } = await supabase
-            .from("break_logs")
-            .select("duration_minutes")
-            .eq("staff_id", report.staff_id)
-            .eq("break_type", "lunch")
-            .gte("break_start", pp.start_date + "T00:00:00")
-            .lte("break_start", pp.end_date + "T23:59:59");
-
-          live_lunch_minutes = (breaks || []).reduce((sum: number, b: { duration_minutes: number | null }) => sum + (b.duration_minutes || 0), 0);
+          live_total_minutes = (shifts || []).reduce((sum: number, s: { duration_minutes: number | null }) => sum + Math.max(0, s.duration_minutes || 0), 0);
         }
 
         enriched.push({
           ...report,
           shift_count,
           has_open_shift,
-          live_total_hours: Math.round(((live_total_minutes - live_lunch_minutes) / 60) * 100) / 100,
+          live_total_hours: Math.round((live_total_minutes / 60) * 100) / 100,
         });
       }
 
@@ -1777,7 +1847,7 @@ Deno.serve(async (req: Request) => {
 
       const { data: staff } = await supabase
         .from("staff")
-        .select("name, email")
+        .select("name, email, employee_number")
         .eq("id", report.staff_id)
         .maybeSingle();
 
@@ -1816,7 +1886,7 @@ Deno.serve(async (req: Request) => {
 
       return json({
         success: true,
-        report: { ...report, staff_name: staff?.name, staff_email: staff?.email, pay_period: payPeriod },
+        report: { ...report, staff_name: staff?.name, staff_email: staff?.email, employee_number: staff?.employee_number || null, pay_period: payPeriod },
         shifts: shifts || [],
         breaks: breaks || [],
         notes: notes || [],
@@ -1860,7 +1930,23 @@ Deno.serve(async (req: Request) => {
         return json({ success: false, message: "Invalid PIN" }, 401);
       }
 
-      return json({ success: true, staff_name: staff.name });
+      // Fetch all reports for this employee (current + previous periods)
+      const { data: allReports } = await supabase
+        .from("timecard_reports")
+        .select("id, access_token, status, pay_period_id, pay_periods (start_date, end_date)")
+        .eq("staff_id", staff.id)
+        .order("pay_period_id", { ascending: false })
+        .limit(5);
+
+      const availableReports = (allReports || []).map((r: { id: string; access_token: string; status: string; pay_periods: { start_date: string; end_date: string } | null }) => ({
+        id: r.id,
+        access_token: r.access_token,
+        status: r.status,
+        start_date: r.pay_periods?.start_date,
+        end_date: r.pay_periods?.end_date,
+      }));
+
+      return json({ success: true, staff_name: staff.name, available_reports: availableReports });
     }
 
     return json({ success: false, message: "Not found" }, 404);
