@@ -1,71 +1,67 @@
-import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '../lib/supabase';
-import type { Session } from '@supabase/supabase-js';
+import { createClient } from '@supabase/supabase-js';
 
-const TIMEOUT_MS = 30 * 60 * 1000;
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-export function useAuth() {
-  const [session, setSession] = useState<Session | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [isAdmin, setIsAdmin] = useState(false);
+export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      if (session) checkAdmin(session.user.id);
-      setLoading(false);
-    });
+export const EDGE_FUNCTION_URL = `${supabaseUrl}/functions/v1/clock-operations`;
+export const TIMECARD_FUNCTION_URL = `${supabaseUrl}/functions/v1/timecard-reports`;
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      if (session) {
-        checkAdmin(session.user.id);
-      } else {
-        setIsAdmin(false);
-      }
-    });
+export async function callEdgeFunction(path: string, body?: Record<string, unknown>, authToken?: string) {
+  const response = await fetch(`${EDGE_FUNCTION_URL}${path}`, {
+    method: body ? 'POST' : 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${authToken || supabaseAnonKey}`,
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
 
-    return () => subscription.unsubscribe();
-  }, []);
-
-  useEffect(() => {
-    if (!session) return;
-    let timeout: ReturnType<typeof setTimeout>;
-
-    const resetTimer = () => {
-      clearTimeout(timeout);
-      timeout = setTimeout(() => {
-        supabase.auth.signOut();
-      }, TIMEOUT_MS);
-    };
-
-    const events = ['mousedown', 'keydown', 'touchstart', 'scroll'];
-    events.forEach(e => window.addEventListener(e, resetTimer));
-    resetTimer();
-
-    return () => {
-      clearTimeout(timeout);
-      events.forEach(e => window.removeEventListener(e, resetTimer));
-    };
-  }, [session]);
-
-  async function checkAdmin(userId: string) {
-    const { data } = await supabase
-      .from('admins')
-      .select('id')
-      .eq('id', userId)
-      .maybeSingle();
-    setIsAdmin(!!data);
+  if (!response.ok) {
+    try {
+      const errorData = await response.json();
+      return { success: false, message: errorData.message || `Request failed (${response.status})` };
+    } catch {
+      return { success: false, message: `Request failed (${response.status})` };
+    }
   }
 
-  const signIn = useCallback(async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    return { error };
-  }, []);
+  try {
+    return await response.json();
+  } catch {
+    return { success: false, message: 'Invalid response from server' };
+  }
+}
 
-  const signOut = useCallback(async () => {
-    await supabase.auth.signOut();
-  }, []);
+export async function callTimecardFunction(
+  path: string,
+  options: { method?: string; body?: Record<string, unknown>; authToken?: string } = {}
+) {
+  const { method, body, authToken } = options;
+  const resolvedMethod = method || (body ? 'POST' : 'GET');
 
-  return { session, loading, isAdmin, signIn, signOut };
+  const response = await fetch(`${TIMECARD_FUNCTION_URL}${path}`, {
+    method: resolvedMethod,
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${authToken || supabaseAnonKey}`,
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+
+  if (!response.ok) {
+    try {
+      const errorData = await response.json();
+      return { success: false, message: errorData.message || `Request failed (${response.status})` };
+    } catch {
+      return { success: false, message: `Request failed (${response.status})` };
+    }
+  }
+
+  try {
+    return await response.json();
+  } catch {
+    return { success: false, message: 'Invalid response from server' };
+  }
 }

@@ -1,295 +1,201 @@
-import { useState, useEffect } from 'react';
-import { callEdgeFunction } from '../lib/supabase';
-import { ArrowLeft, Clock, Coffee, TrendingUp } from 'lucide-react';
+import { useState } from 'react';
+import { Mail, Lock, Clock, ArrowLeft } from 'lucide-react';
 import { BrandAccents, BrandDots } from '../components/BrandAccents';
+import { EDGE_FUNCTION_URL } from '../lib/supabase';
 
-interface HoursLog {
-  id: string;
-  clock_in_time: string;
-  clock_out_time: string | null;
-  duration_minutes: number | null;
-  notes: string;
+interface AdminLoginProps {
+  onLogin: (email: string, password: string) => Promise<{ error: unknown }>;
 }
 
-interface HoursBreak {
-  clock_log_id: string;
-  break_start: string;
-  break_end: string | null;
-  duration_minutes: number | null;
-}
-
-interface HoursData {
-  staff_name: string;
-  is_clocked_in: boolean;
-  is_on_break: boolean;
-  week_start: string;
-  week_end: string;
-  logs: HoursLog[];
-  breaks: HoursBreak[];
-  total_hours: number;
-  overtime_threshold: number;
-  remaining_hours: number;
-}
-
-export function MyHoursPage() {
-  const [pin, setPin] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [data, setData] = useState<HoursData | null>(null);
+export function AdminLogin({ onLogin }: AdminLoginProps) {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [showReset, setShowReset] = useState(false);
+  const [resetEmail, setResetEmail] = useState('');
 
-  async function fetchHours() {
-    if (pin.length !== 4) return;
-    setLoading(true);
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
     setError('');
+    setLoading(true);
 
-    const result = await callEdgeFunction('/my-hours', { pin });
-
-    if (result.success) {
-      setData(result as unknown as HoursData);
-    } else {
-      setError(result.message || 'Failed to load hours');
+    const { error } = await onLogin(email, password);
+    if (error) {
+      setError('Invalid email or password');
     }
     setLoading(false);
   }
 
-  useEffect(() => {
-    if (pin.length === 4) {
-      fetchHours();
+  async function handleResetPassword(e: React.FormEvent) {
+    e.preventDefault();
+    setError('');
+    setSuccess('');
+    setLoading(true);
+
+    try {
+      const appUrl = window.location.origin + window.location.pathname;
+      const response = await fetch(`${EDGE_FUNCTION_URL}/request-password-reset`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: resetEmail, app_url: appUrl }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setError(data.message || 'Failed to send reset email');
+      } else {
+        setSuccess('Password reset link sent! Check your email inbox.');
+      }
+    } catch {
+      setError('Network error. Please try again.');
     }
-  }, [pin]);
-
-  function getDayName(dateStr: string): string {
-    return new Date(dateStr).toLocaleDateString('en-US', { timeZone: 'America/New_York', weekday: 'short', month: 'short', day: 'numeric' });
+    setLoading(false);
   }
 
-  function formatTime(dateStr: string): string {
-    return new Date(dateStr).toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit' });
-  }
-
-  function formatDuration(mins: number): string {
-    const h = Math.floor(mins / 60);
-    const m = Math.round(mins % 60);
-    return `${h}h ${m}m`;
-  }
-
-  const progressPercent = data
-    ? Math.min(100, (data.total_hours / data.overtime_threshold) * 100)
-    : 0;
-
-  if (data) {
-    const breaksByLog = new Map<string, HoursBreak[]>();
-    data.breaks.forEach(b => {
-      const list = breaksByLog.get(b.clock_log_id) || [];
-      list.push(b);
-      breaksByLog.set(b.clock_log_id, list);
-    });
-
+  if (showReset) {
     return (
-      <div className="min-h-screen bg-moja-bg relative">
+      <div className="min-h-screen bg-moja-bg relative flex items-center justify-center p-6">
         <BrandAccents />
-        <div className="relative z-10 max-w-lg mx-auto p-4 sm:p-6">
-          {/* Header */}
-          <div className="flex items-center gap-3 mb-6">
-            <button
-              onClick={() => { setData(null); setPin(''); }}
-              className="p-2 hover:bg-white rounded-lg transition-colors"
-            >
-              <ArrowLeft className="w-5 h-5 text-moja-blue" />
-            </button>
+
+        <div className="relative z-10 w-full max-w-md">
+          <div className="text-center mb-8">
+            <div className="inline-flex items-center justify-center w-16 h-16 bg-moja-blue rounded-2xl mb-4">
+              <Clock className="w-8 h-8 text-white" />
+            </div>
+            <h1 className="text-3xl font-bold text-moja-blue">Reset Password</h1>
+            <p className="text-moja-blue/60 mt-1 font-semibold">Enter your email to receive a reset link</p>
+            <BrandDots className="justify-center mt-3" />
+          </div>
+
+          <form onSubmit={handleResetPassword} className="bg-white rounded-2xl shadow-lg border border-gray-100 p-8 space-y-5">
+            {error && (
+              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm font-semibold">
+                {error}
+              </div>
+            )}
+            {success && (
+              <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-xl text-sm font-semibold">
+                {success}
+              </div>
+            )}
+
             <div>
-              <h1 className="text-xl font-bold text-moja-blue">{data.staff_name}</h1>
-              <p className="text-xs font-semibold text-moja-blue/50">
-                Week of {new Date(data.week_start).toLocaleDateString('en-US', { timeZone: 'America/New_York', month: 'long', day: 'numeric' })}
-              </p>
-            </div>
-            {data.is_clocked_in && (
-              <span className="ml-auto text-xs font-bold text-green-700 bg-green-50 px-3 py-1.5 rounded-full">
-                {data.is_on_break ? 'On Break' : 'Clocked In'}
-              </span>
-            )}
-          </div>
-
-          {/* Weekly Summary Card */}
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 mb-4">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <TrendingUp className="w-5 h-5 text-moja-aqua" />
-                <span className="text-sm font-bold text-moja-blue">Weekly Total</span>
+              <label className="block text-sm font-bold text-moja-blue mb-2">Email</label>
+              <div className="relative">
+                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-moja-blue/40" />
+                <input
+                  type="email"
+                  value={resetEmail}
+                  onChange={(e) => setResetEmail(e.target.value)}
+                  className="w-full h-[60px] pl-12 pr-4 text-lg font-semibold text-moja-blue border-2 border-moja-blue/20 rounded-xl focus:border-moja-orange focus:outline-none focus:ring-2 focus:ring-moja-orange/20 transition-all"
+                  placeholder="admin@moja.com"
+                  required
+                />
               </div>
-              <span className="text-2xl font-bold text-moja-blue font-mono">
-                {data.total_hours}h
-              </span>
             </div>
 
-            {/* Progress bar */}
-            <div className="relative h-4 bg-gray-100 rounded-full overflow-hidden mb-2">
-              <div
-                className={`absolute inset-y-0 left-0 rounded-full transition-all duration-500 ${
-                  progressPercent >= 100 ? 'bg-moja-orange' : 'bg-moja-aqua'
-                }`}
-                style={{ width: `${progressPercent}%` }}
-              />
-              {/* OT warning line at threshold */}
-              <div
-                className="absolute inset-y-0 w-0.5 bg-moja-blue/30"
-                style={{ left: '100%' }}
-              />
-            </div>
-            <div className="flex justify-between text-xs font-semibold text-moja-blue/50">
-              <span>0h</span>
-              <span>
-                {data.remaining_hours > 0
-                  ? `${data.remaining_hours}h until OT`
-                  : `${(data.total_hours - data.overtime_threshold).toFixed(1)}h overtime`}
-              </span>
-              <span>{data.overtime_threshold}h</span>
-            </div>
-          </div>
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full h-[70px] bg-moja-orange hover:bg-moja-orange/90 active:scale-[0.98] text-white font-bold text-lg rounded-xl transition-all disabled:opacity-50 touch-manipulation"
+            >
+              {loading ? 'Sending...' : 'Send Reset Link'}
+            </button>
+          </form>
 
-          {/* Daily Breakdown */}
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-            <div className="px-5 py-3 border-b border-gray-100 flex items-center gap-2">
-              <Clock className="w-4 h-4 text-moja-blue/50" />
-              <span className="text-sm font-bold text-moja-blue">Shifts This Week</span>
-            </div>
-
-            {data.logs.length === 0 ? (
-              <div className="p-6 text-center text-moja-blue/40 font-semibold text-sm">
-                No shifts recorded this week
-              </div>
-            ) : (
-              <div className="divide-y divide-gray-50">
-                {data.logs.map(log => {
-                  const logBreaks = breaksByLog.get(log.id) || [];
-                  const totalBreakMins = logBreaks.reduce((s, b) => s + (b.duration_minutes || 0), 0);
-
-                  return (
-                    <div key={log.id} className="px-5 py-3">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <span className="text-sm font-bold text-moja-blue">
-                            {getDayName(log.clock_in_time)}
-                          </span>
-                          <span className="text-xs text-moja-blue/50 ml-2 font-semibold">
-                            {formatTime(log.clock_in_time)}
-                            {log.clock_out_time ? ` - ${formatTime(log.clock_out_time)}` : ' (active)'}
-                          </span>
-                        </div>
-                        {log.duration_minutes != null && (
-                          <span className="text-sm font-bold text-moja-blue font-mono">
-                            {formatDuration(log.duration_minutes)}
-                          </span>
-                        )}
-                        {!log.clock_out_time && (
-                          <span className="text-xs font-bold text-moja-aqua bg-moja-aqua/10 px-2 py-1 rounded-full">
-                            Active
-                          </span>
-                        )}
-                      </div>
-                      {totalBreakMins > 0 && (
-                        <div className="flex items-center gap-1 mt-1">
-                          <Coffee className="w-3 h-3 text-moja-yellow" />
-                          <span className="text-xs font-semibold text-moja-blue/40">
-                            {formatDuration(totalBreakMins)} break
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          {/* Back link */}
           <div className="mt-6 text-center">
-            <a href="#/" className="text-sm font-bold text-moja-blue/40 hover:text-moja-aqua transition-colors">
-              Back to Time Clock
-            </a>
+            <button
+              onClick={() => { setShowReset(false); setError(''); setSuccess(''); }}
+              className="inline-flex items-center gap-2 text-sm text-moja-blue/60 hover:text-moja-aqua transition-colors font-semibold"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              Back to Login
+            </button>
           </div>
         </div>
       </div>
     );
   }
 
-  // PIN Entry Screen
   return (
-    <div className="min-h-screen bg-moja-bg relative flex flex-col items-center justify-center p-4">
+    <div className="min-h-screen bg-moja-bg relative flex items-center justify-center p-6">
       <BrandAccents />
-      <div className="relative z-10 w-full max-w-sm">
-        <div className="text-center mb-6">
-          <div className="inline-flex items-center justify-center w-14 h-14 bg-moja-blue rounded-2xl mb-3">
-            <Clock className="w-7 h-7 text-white" />
+
+      <div className="relative z-10 w-full max-w-md">
+        <div className="text-center mb-8">
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-moja-blue rounded-2xl mb-4">
+            <Clock className="w-8 h-8 text-white" />
           </div>
-          <h1 className="text-2xl font-bold text-moja-blue">My Hours</h1>
-          <p className="text-sm font-semibold text-moja-blue/50 mt-1">Enter your PIN to view your timesheet</p>
-          <BrandDots className="justify-center mt-2" />
+          <h1 className="text-3xl font-bold text-moja-blue">Admin Login</h1>
+          <p className="text-moja-blue/60 mt-1 font-semibold">Moja Behavioral Services</p>
+          <BrandDots className="justify-center mt-3" />
         </div>
 
-        <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6">
+        <form onSubmit={handleSubmit} className="bg-white rounded-2xl shadow-lg border border-gray-100 p-8 space-y-5">
           {error && (
-            <div className="mb-4 px-4 py-3 bg-red-50 border border-red-100 rounded-xl">
-              <p className="text-sm font-semibold text-red-600">{error}</p>
+            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm font-semibold">
+              {error}
             </div>
           )}
 
-          {/* PIN dots */}
-          <div className="flex justify-center gap-3 mb-5">
-            {[0, 1, 2, 3].map(i => (
-              <div
-                key={i}
-                className={`w-14 h-14 rounded-xl border-2 flex items-center justify-center text-2xl font-bold transition-all duration-150 ${
-                  pin.length > i
-                    ? 'border-moja-aqua bg-moja-aqua/5 text-moja-aqua scale-105'
-                    : pin.length === i
-                      ? 'border-moja-blue/40 bg-moja-bg'
-                      : 'border-moja-blue/15 bg-moja-bg'
-                }`}
-              >
-                {pin.length > i ? '\u2022' : ''}
-              </div>
-            ))}
-          </div>
-
-          {/* Keypad */}
-          <div className="grid grid-cols-3 gap-2.5 max-w-[260px] mx-auto">
-            {['1','2','3','4','5','6','7','8','9','','0',''].map((digit, i) => {
-              if (digit === '' && i === 9) {
-                return <div key="empty-left" />;
-              }
-              if (digit === '' && i === 11) {
-                return (
-                  <button
-                    key="del"
-                    onClick={() => setPin(p => p.slice(0, -1))}
-                    className="h-[56px] rounded-xl bg-moja-pink/15 text-xs font-bold text-moja-blue hover:bg-moja-pink/30 active:scale-95 transition-all touch-manipulation"
-                  >
-                    Del
-                  </button>
-                );
-              }
-              return (
-                <button
-                  key={digit}
-                  onClick={() => setPin(p => p.length < 4 ? p + digit : p)}
-                  className="h-[56px] rounded-xl bg-moja-blue text-white text-xl font-bold hover:bg-moja-blue/80 active:scale-95 transition-all touch-manipulation"
-                >
-                  {digit}
-                </button>
-              );
-            })}
-          </div>
-
-          {loading && (
-            <div className="flex items-center justify-center mt-4">
-              <div className="w-6 h-6 border-3 border-moja-aqua border-t-transparent rounded-full animate-spin" />
+          <div>
+            <label className="block text-sm font-bold text-moja-blue mb-2">Email</label>
+            <div className="relative">
+              <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-moja-blue/40" />
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full h-[60px] pl-12 pr-4 text-lg font-semibold text-moja-blue border-2 border-moja-blue/20 rounded-xl focus:border-moja-orange focus:outline-none focus:ring-2 focus:ring-moja-orange/20 transition-all"
+                placeholder="admin@moja.com"
+                required
+              />
             </div>
-          )}
-        </div>
+          </div>
 
-        <div className="mt-5 text-center">
-          <a href="#/" className="text-xs font-semibold text-moja-blue/30 hover:text-moja-aqua transition-colors">
+          <div>
+            <label className="block text-sm font-bold text-moja-blue mb-2">Password</label>
+            <div className="relative">
+              <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-moja-blue/40" />
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full h-[60px] pl-12 pr-4 text-lg font-semibold text-moja-blue border-2 border-moja-blue/20 rounded-xl focus:border-moja-orange focus:outline-none focus:ring-2 focus:ring-moja-orange/20 transition-all"
+                placeholder="Enter password"
+                required
+              />
+            </div>
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full h-[70px] bg-moja-orange hover:bg-moja-orange/90 active:scale-[0.98] text-white font-bold text-lg rounded-xl transition-all disabled:opacity-50 touch-manipulation"
+          >
+            {loading ? 'Signing in...' : 'Log In'}
+          </button>
+
+          <div className="text-center">
+            <button
+              type="button"
+              onClick={() => { setShowReset(true); setResetEmail(email); setError(''); }}
+              className="text-sm text-moja-blue/50 hover:text-moja-orange transition-colors font-semibold"
+            >
+              Forgot password?
+            </button>
+          </div>
+        </form>
+
+        <div className="mt-6 text-center space-y-2">
+          <a href="#/" className="block text-sm text-moja-blue/40 hover:text-moja-aqua transition-colors font-semibold">
             Back to Time Clock
+          </a>
+          <a href="#/admin/setup" className="block text-sm text-moja-aqua hover:text-moja-orange transition-colors font-semibold">
+            First time? Set up admin account
           </a>
         </div>
       </div>

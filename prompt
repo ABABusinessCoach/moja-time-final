@@ -1,3 +1,3 @@
-{
-  "template": "bolt-vite-react-ts"
-}
+VITE_SUPABASE_URL=https://lrkblcyqeruzrhynjmqn.supabase.co
+VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxya2JsY3lxZXJ1enJoeW5qbXFuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk5Mjc1ODIsImV4cCI6MjA5NTUwMzU4Mn0.DEvOPRar8K5Ka_SkO4rrqPrHFf0vibnlC_b74cKWoiI
+VITE_APP_URL=https://time.mojakids.com

@@ -1,677 +1,602 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { LogIn, LogOut, UtensilsCrossed, Coffee, Delete, RotateCcw, User } from 'lucide-react';
-import { callEdgeFunction } from '../lib/supabase';
-import { Toast } from '../components/Toast';
-import { BrandAccents, BrandDots } from '../components/BrandAccents';
+import { useState, useEffect } from 'react';
+import { supabase } from '../lib/supabase';
+import type { Staff, ClockLog, BreakLog } from '../lib/types';
+import { Download, Calendar, ArrowUpDown, BarChart3, CalendarRange, X, Loader2 } from 'lucide-react';
+import { formatHM } from '../lib/formatTime';
 
-interface StaffLookup {
-  staff_name: string;
-  staff_id: string;
-  is_clocked_in: boolean;
-  is_on_break: boolean;
+function getWeekDates(date: Date): { start: Date; end: Date } {
+  const d = new Date(date);
+  const day = d.getDay(); // 0=Sun, 6=Sat
+  const diffToSat = day === 6 ? 0 : -(day + 1);
+  const start = new Date(d);
+  start.setDate(d.getDate() + diffToSat);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
+  end.setHours(23, 59, 59, 999);
+  return { start, end };
 }
 
-interface ShiftSummary {
-  staff_name: string;
-  action: 'clock_in' | 'clock_out' | 'start_break' | 'start_lunch' | 'end_break' | 'end_lunch';
-  clock_in_time?: string;
-  timestamp: string;
-  duration_minutes?: number;
-  break_minutes?: number;
-  weekly_total_hours?: number;
+function formatDate(d: Date): string {
+  return d.toISOString().split('T')[0];
 }
 
-export function ClockPage() {
-  const [pin, setPin] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [lookingUp, setLookingUp] = useState(false);
-  const [staffInfo, setStaffInfo] = useState<StaffLookup | null>(null);
-  const [lookupError, setLookupError] = useState('');
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
-  const [shiftSummary, setShiftSummary] = useState<ShiftSummary | null>(null);
-  const [currentTime, setCurrentTime] = useState(new Date());
-  const lookupDone = useRef(false);
-  const currentPin = useRef('');
-  const inactivityTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+const DAY_NAMES = ['Sat', 'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
 
-  function resetInactivityTimer() {
-    if (inactivityTimer.current) clearTimeout(inactivityTimer.current);
-    inactivityTimer.current = setTimeout(() => {
-      setPin('');
-      setStaffInfo(null);
-      setLookupError('');
-      lookupDone.current = false;
-    }, 45000);
-  }
+function formatDec(mins: number): string {
+  if (mins <= 0) return '-';
+  return formatHM(mins);
+}
 
-  useEffect(() => {
-    if (pin.length > 0) {
-      resetInactivityTimer();
-    } else if (inactivityTimer.current) {
-      clearTimeout(inactivityTimer.current);
-      inactivityTimer.current = null;
-    }
-    return () => {
-      if (inactivityTimer.current) clearTimeout(inactivityTimer.current);
-    };
-  }, [pin, staffInfo]);
-
-  useEffect(() => {
-    currentPin.current = pin;
-  }, [pin]);
-
-  useEffect(() => {
-    const interval = setInterval(() => setCurrentTime(new Date()), 1000);
-    return () => clearInterval(interval);
-  }, []);
-
-  useEffect(() => {
-    if (pin.length === 4 && !lookupDone.current) {
-      lookupDone.current = true;
-      lookupStaff(pin);
-    }
-    if (pin.length < 4) {
-      lookupDone.current = false;
-      setStaffInfo(null);
-      setLookupError('');
-    }
-  }, [pin]);
-
-  // Keyboard support
-  useEffect(() => {
-    function handleKeyDown(e: KeyboardEvent) {
-      if (shiftSummary) {
-        if (e.key === 'Escape' || e.key === 'Enter') {
-          setShiftSummary(null);
-        }
-        return;
-      }
-
-      if (e.key >= '0' && e.key <= '9') {
-        setPin(prev => prev.length < 4 ? prev + e.key : prev);
-      } else if (e.key === 'Backspace') {
-        setPin(prev => prev.slice(0, -1));
-      } else if (e.key === 'Escape') {
-        setPin('');
-        setStaffInfo(null);
-        setLookupError('');
-        lookupDone.current = false;
-      }
-    }
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [shiftSummary]);
-
-  async function lookupStaff(pinValue: string) {
-    setLookingUp(true);
-    setLookupError('');
-    const result = await callEdgeFunction('/lookup-pin', { pin: pinValue });
-    setLookingUp(false);
-    if (result.success) {
-      setStaffInfo({
-        staff_name: result.staff_name,
-        staff_id: result.staff_id,
-        is_clocked_in: result.is_clocked_in,
-        is_on_break: result.is_on_break || false,
-      });
-    } else {
-      setLookupError(result.message || 'Invalid PIN');
-      vibrate();
-    }
-  }
-
-  function vibrate(pattern: number | number[] = 50) {
-    if (navigator.vibrate) navigator.vibrate(pattern);
-  }
-
-  const handleDigit = useCallback((digit: string) => {
-    vibrate(30);
-    setPin(prev => prev.length < 4 ? prev + digit : prev);
-  }, []);
-
-  const handleDelete = useCallback(() => {
-    setPin(prev => prev.slice(0, -1));
-  }, []);
-
-  const handleClear = useCallback(() => {
-    setPin('');
-    setStaffInfo(null);
-    setLookupError('');
-    lookupDone.current = false;
-  }, []);
-
-  async function handleClock(action: 'in' | 'out') {
-    if (pin.length !== 4 || !staffInfo) return;
-    setLoading(true);
-
-    const result = await callEdgeFunction(`/clock-${action}-by-pin`, { pin });
-
-    setLoading(false);
-
-    if (result.success) {
-      vibrate([50, 50, 100]);
-      setShiftSummary({
-        staff_name: result.staff_name,
-        action: action === 'in' ? 'clock_in' : 'clock_out',
-        clock_in_time: result.clock_in_time,
-        timestamp: result.timestamp,
-        duration_minutes: result.duration_minutes,
-        break_minutes: result.break_minutes,
-        weekly_total_hours: result.weekly_total_hours,
-      });
-      setPin('');
-      setStaffInfo(null);
-      lookupDone.current = false;
-    } else {
-      vibrate([100, 50, 100]);
-      setToast({ message: result.message || 'Operation failed', type: 'error' });
-      setPin('');
-      setStaffInfo(null);
-      lookupDone.current = false;
-    }
-  }
-
-  async function handleBreak(action: 'start' | 'end', breakType: 'break' | 'lunch' = 'break') {
-    if (pin.length !== 4 || !staffInfo) return;
-    setLoading(true);
-
-    const endpoint = action === 'start' ? '/start-break' : '/end-break';
-    const result = await callEdgeFunction(endpoint, { pin, break_type: breakType });
-
-    setLoading(false);
-
-    if (result.success) {
-      vibrate([50, 50]);
-      const actionKey = action === 'start'
-        ? (breakType === 'lunch' ? 'start_lunch' : 'start_break')
-        : (breakType === 'lunch' ? 'end_lunch' : 'end_break');
-      setShiftSummary({
-        staff_name: result.staff_name,
-        action: actionKey as ShiftSummary['action'],
-        timestamp: result.timestamp || new Date().toISOString(),
-        duration_minutes: result.break_duration_minutes,
-      });
-      setPin('');
-      setStaffInfo(null);
-      lookupDone.current = false;
-    } else {
-      setToast({ message: result.message || 'Operation failed', type: 'error' });
-    }
-  }
-
-  const estOptions = { timeZone: 'America/New_York' } as const;
-  const hours = parseInt(currentTime.toLocaleString('en-US', { ...estOptions, hour: 'numeric', hour12: false }));
-  const minutes = parseInt(currentTime.toLocaleString('en-US', { ...estOptions, minute: 'numeric' }));
-  const seconds = parseInt(currentTime.toLocaleString('en-US', { ...estOptions, second: 'numeric' }));
-
-  const hourDeg = (hours % 12) * 30 + minutes * 0.5;
-  const minuteDeg = minutes * 6;
-  const secondDeg = seconds * 6;
-
-  const timeString = currentTime.toLocaleTimeString('en-US', {
-    ...estOptions,
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  });
-
-  const dateString = currentTime.toLocaleDateString('en-US', {
-    ...estOptions,
-    weekday: 'long',
-    month: 'long',
-    day: 'numeric',
-    year: 'numeric',
-  });
-
-  // Shift summary overlay
-  if (shiftSummary) {
-    const firstName = shiftSummary.staff_name.split(' ')[0];
-    const ts = new Date(shiftSummary.timestamp);
-    const timeDisplay = ts.toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit' });
-    const dateDisplay = ts.toLocaleDateString('en-US', { timeZone: 'America/New_York', weekday: 'short', day: 'numeric', month: 'short' });
-
-    const configs = {
-      clock_in: {
-        bg: 'bg-green-50',
-        border: 'border-green-200',
-        badge: 'Paid time starts',
-        badgeBg: 'bg-green-100 text-green-700',
-        iconBg: 'bg-green-100',
-        iconColor: 'text-green-600',
-        icon: <LogIn className="w-6 h-6" />,
-        title: `You're in, ${firstName}!`,
-        subtitle: "Great to see you. Let's make today a good one.",
-        button: "Got it, let's go!",
-        buttonBg: 'bg-green-600 hover:bg-green-700',
-      },
-      clock_out: {
-        bg: 'bg-orange-50',
-        border: 'border-orange-200',
-        badge: 'Shift ended',
-        badgeBg: 'bg-orange-100 text-orange-700',
-        iconBg: 'bg-orange-100',
-        iconColor: 'text-orange-600',
-        icon: <LogOut className="w-6 h-6" />,
-        title: `All done for today!`,
-        subtitle: `You're clocked out, ${firstName}. Take care of yourself out there.`,
-        button: 'Bye!',
-        buttonBg: 'bg-orange-500 hover:bg-orange-600',
-      },
-      start_break: {
-        bg: 'bg-amber-50',
-        border: 'border-amber-200',
-        badge: 'Paid break \u2014 clock running',
-        badgeBg: 'bg-amber-100 text-amber-700',
-        iconBg: 'bg-amber-100',
-        iconColor: 'text-amber-700',
-        icon: <Coffee className="w-6 h-6" />,
-        title: `Break time, ${firstName}!`,
-        subtitle: "You've got 15 minutes \u2014 go breathe some fresh air.",
-        button: 'See you soon!',
-        buttonBg: 'bg-amber-600 hover:bg-amber-700',
-      },
-      start_lunch: {
-        bg: 'bg-amber-50',
-        border: 'border-amber-200',
-        badge: 'Lunch break \u2014 clock paused',
-        badgeBg: 'bg-amber-100 text-amber-700',
-        iconBg: 'bg-amber-100',
-        iconColor: 'text-amber-700',
-        icon: <UtensilsCrossed className="w-6 h-6" />,
-        title: `Enjoy your lunch, ${firstName}!`,
-        subtitle: "Take your time and recharge. You've earned it.",
-        button: 'Bon appetit!',
-        buttonBg: 'bg-amber-600 hover:bg-amber-700',
-      },
-      end_break: {
-        bg: 'bg-sky-50',
-        border: 'border-sky-200',
-        badge: 'Back from break',
-        badgeBg: 'bg-sky-100 text-sky-700',
-        iconBg: 'bg-sky-100',
-        iconColor: 'text-sky-600',
-        icon: <Coffee className="w-6 h-6" />,
-        title: `Welcome back, ${firstName}!`,
-        subtitle: shiftSummary.duration_minutes
-          ? `Break was ${shiftSummary.duration_minutes}m. Let's finish strong.`
-          : "Let's finish strong.",
-        button: "Let's go!",
-        buttonBg: 'bg-sky-600 hover:bg-sky-700',
-      },
-      end_lunch: {
-        bg: 'bg-sky-50',
-        border: 'border-sky-200',
-        badge: 'Back from lunch',
-        badgeBg: 'bg-sky-100 text-sky-700',
-        iconBg: 'bg-sky-100',
-        iconColor: 'text-sky-600',
-        icon: <UtensilsCrossed className="w-6 h-6" />,
-        title: `Welcome back, ${firstName}!`,
-        subtitle: shiftSummary.duration_minutes
-          ? `Lunch was ${shiftSummary.duration_minutes}m. Ready to finish the day.`
-          : "Hope that was good. Ready to finish the day.",
-        button: "Let's go!",
-        buttonBg: 'bg-sky-600 hover:bg-sky-700',
-      },
-    };
-
-    const c = configs[shiftSummary.action];
-
-    return (
-      <div className="min-h-[100dvh] bg-moja-bg relative flex flex-col items-center justify-center p-3 sm:p-4">
-        <BrandAccents />
-        <div className="relative z-10 w-full max-w-sm animate-fade-in">
-          <p className="text-xs sm:text-sm text-gray-400 mb-2 ml-1 font-medium">
-            {shiftSummary.action === 'clock_in' ? 'Clocking in' : shiftSummary.action === 'clock_out' ? 'Clocking out' : 'Break update'}
-          </p>
-          <div className={`rounded-2xl border-2 ${c.border} ${c.bg} p-5 sm:p-6 shadow-sm`}>
-            <div className="flex flex-col items-center text-center">
-              <span className={`inline-block px-3 py-1 rounded-full text-xs font-bold ${c.badgeBg} mb-3 sm:mb-4`}>
-                {c.badge}
-              </span>
-
-              <div className={`w-12 h-12 sm:w-14 sm:h-14 rounded-full flex items-center justify-center ${c.iconBg} ${c.iconColor} mb-3 sm:mb-4`}>
-                {c.icon}
-              </div>
-
-              <h2 className="text-lg sm:text-xl font-bold text-gray-900 mb-1">{c.title}</h2>
-              <p className="text-xs sm:text-sm text-gray-500 mb-4 sm:mb-5 leading-relaxed">{c.subtitle}</p>
-
-              <p className="text-xs sm:text-sm text-gray-400 font-medium mb-5 sm:mb-6">
-                {timeDisplay} &middot; {dateDisplay}
-              </p>
-
-              <button
-                onClick={() => setShiftSummary(null)}
-                className={`w-full h-12 sm:h-14 ${c.buttonBg} text-white rounded-xl font-bold active:scale-[0.98] transition-all touch-manipulation text-sm sm:text-base`}
-              >
-                {c.button}
-              </button>
-
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
+function HoursBarChart({ data }: { data: { name: string; hours: number }[] }) {
+  const maxHours = Math.max(...data.map(d => d.hours), 1);
 
   return (
-    <div className="min-h-[100dvh] bg-moja-bg relative flex flex-col">
-      <BrandAccents />
+    <div className="flex items-end gap-2 h-40 px-2">
+      {data.map((d, i) => (
+        <div key={i} className="flex-1 flex flex-col items-center gap-1">
+          <span className="text-xs font-bold text-moja-blue/50 font-mono">
+            {d.hours > 0 ? formatHM(d.hours * 60) : ''}
+          </span>
+          <div
+            className="w-full rounded-t-md bg-moja-aqua/70 transition-all duration-500 min-h-[2px]"
+            style={{ height: `${(d.hours / maxHours) * 100}%` }}
+          />
+          <span className="text-xs font-bold text-moja-blue/40">{d.name}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
 
-      {toast && (
-        <Toast
-          message={toast.message}
-          type={toast.type}
-          onClose={() => setToast(null)}
-        />
+function downloadBlob(csv: string, filename: string) {
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+export function WeeklyReports() {
+  const [weekOf, setWeekOf] = useState(() => {
+    const now = new Date();
+    const day = now.getDay(); // 0=Sun, 6=Sat
+    const diffToSat = day === 6 ? 0 : -(day + 1);
+    const sat = new Date(now);
+    sat.setDate(now.getDate() + diffToSat);
+    return formatDate(sat);
+  });
+  const [staffList, setStaffList] = useState<Staff[]>([]);
+  const [logs, setLogs] = useState<ClockLog[]>([]);
+  const [breakLogs, setBreakLogs] = useState<BreakLog[]>([]);
+  const [corrections, setCorrections] = useState<{ clock_log_id: string; proposed_duration_minutes: number }[]>([]);
+  const [filterStaff, setFilterStaff] = useState('');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  const [loading, setLoading] = useState(false);
+  const [viewMode, setViewMode] = useState<'table' | 'chart'>('table');
+
+  // Date range export state
+  const [showDateRange, setShowDateRange] = useState(false);
+  const [rangeStart, setRangeStart] = useState(() => {
+    const d = new Date();
+    d.setDate(1);
+    return formatDate(d);
+  });
+  const [rangeEnd, setRangeEnd] = useState(() => formatDate(new Date()));
+  const [rangeStaff, setRangeStaff] = useState('');
+  const [rangeExporting, setRangeExporting] = useState(false);
+
+  useEffect(() => {
+    loadData();
+  }, [weekOf]);
+
+  useEffect(() => {
+    const channel = supabase
+      .channel('reports-clock-logs')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'clock_logs' },
+        () => { loadData(); }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [weekOf]);
+
+  async function loadData() {
+    setLoading(true);
+    const weekStart = new Date(weekOf);
+    const { end } = getWeekDates(weekStart);
+
+    const [staffRes, logsRes, breaksRes, correctionsRes] = await Promise.all([
+      supabase.from('staff').select('*').order('name'),
+      supabase
+        .from('clock_logs')
+        .select('*')
+        .gte('clock_in_time', weekStart.toISOString())
+        .lte('clock_in_time', end.toISOString())
+        .order('clock_in_time'),
+      supabase
+        .from('break_logs')
+        .select('*')
+        .gte('break_start', weekStart.toISOString())
+        .lte('break_start', end.toISOString()),
+      supabase
+        .from('timecard_corrections')
+        .select('clock_log_id, proposed_duration_minutes')
+        .eq('approval_status', 'approved')
+        .not('clock_log_id', 'is', null),
+    ]);
+
+    if (staffRes.data) setStaffList(staffRes.data);
+    if (logsRes.data) setLogs(logsRes.data);
+    if (breaksRes.data) setBreakLogs(breaksRes.data);
+    if (correctionsRes.data) setCorrections(correctionsRes.data);
+    setLoading(false);
+  }
+
+  function getStaffWeekData() {
+    let filtered = staffList.filter(s => s.is_active || logs.some(l => l.staff_id === s.id));
+    if (filterStaff) filtered = filtered.filter(s => s.id === filterStaff);
+
+    const corrMap = new Map(corrections.map(c => [c.clock_log_id, c.proposed_duration_minutes]));
+
+    const data = filtered.map(staff => {
+      const staffLogs = logs.filter(l => l.staff_id === staff.id);
+      const dailyRaw = [0, 0, 0, 0, 0, 0, 0];
+      const dailyFinal = [0, 0, 0, 0, 0, 0, 0];
+
+      staffLogs.forEach(log => {
+        const logDate = new Date(log.clock_in_time);
+        const dow = logDate.getDay(); // 0=Sun, 6=Sat
+        const dayIndex = dow === 6 ? 0 : dow + 1; // Sat=0, Sun=1, Mon=2, Tue=3, Wed=4, Thu=5, Fri=6
+
+        if (log.clock_out_time) {
+          const rawMins = (new Date(log.clock_out_time).getTime() - logDate.getTime()) / 60000;
+          dailyRaw[dayIndex] += rawMins;
+        }
+        if (corrMap.has(log.id)) {
+          dailyFinal[dayIndex] += Math.max(0, corrMap.get(log.id) || 0);
+        } else if (log.duration_minutes) {
+          dailyFinal[dayIndex] += log.duration_minutes;
+        }
+      });
+
+      const totalRaw = dailyRaw.reduce((a, b) => a + b, 0);
+      const totalFinal = dailyFinal.reduce((a, b) => a + b, 0);
+      const overtime = Math.max(0, totalFinal - 40 * 60);
+      const regularHours = totalFinal - overtime;
+
+      return { staff, dailyRaw, dailyFinal, totalRaw, totalFinal, overtime, regularHours };
+    });
+
+    data.sort((a, b) => {
+      const cmp = a.staff.name.localeCompare(b.staff.name);
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+
+    return data;
+  }
+
+  async function exportDateRangeCSV() {
+    if (!rangeStart || !rangeEnd) return;
+    setRangeExporting(true);
+
+    try {
+      const startDate = new Date(rangeStart);
+      startDate.setHours(0, 0, 0, 0);
+      const endDate = new Date(rangeEnd);
+      endDate.setHours(23, 59, 59, 999);
+
+      const [staffRes, logsRes, breaksRes, corrRes] = await Promise.all([
+        supabase.from('staff').select('*').order('name'),
+        supabase
+          .from('clock_logs')
+          .select('*')
+          .gte('clock_in_time', startDate.toISOString())
+          .lte('clock_in_time', endDate.toISOString())
+          .order('clock_in_time'),
+        supabase
+          .from('break_logs')
+          .select('*')
+          .gte('break_start', startDate.toISOString())
+          .lte('break_start', endDate.toISOString()),
+        supabase
+          .from('timecard_corrections')
+          .select('clock_log_id, proposed_duration_minutes')
+          .eq('approval_status', 'approved')
+          .not('clock_log_id', 'is', null),
+      ]);
+
+      const allStaff: Staff[] = staffRes.data || [];
+      let rangeLogs: ClockLog[] = logsRes.data || [];
+      const rangeBreaks: BreakLog[] = breaksRes.data || [];
+      const rangeCorrMap = new Map((corrRes.data || []).map((c: { clock_log_id: string; proposed_duration_minutes: number }) => [c.clock_log_id, c.proposed_duration_minutes]));
+
+      if (rangeStaff) {
+        rangeLogs = rangeLogs.filter(l => l.staff_id === rangeStaff);
+      }
+
+      // Group logs by staff, then by week
+      const staffMap = new Map<string, { staff: Staff; logs: ClockLog[] }>();
+      rangeLogs.forEach(log => {
+        const staff = allStaff.find(s => s.id === log.staff_id);
+        if (!staff) return;
+        if (!staffMap.has(staff.id)) {
+          staffMap.set(staff.id, { staff, logs: [] });
+        }
+        staffMap.get(staff.id)!.logs.push(log);
+      });
+
+      const rows: string[][] = [
+        ['Employee Name', 'Employee #', 'Date', 'Clock In', 'Clock Out', 'Raw Time', 'Break', 'Lunch', 'Final Hours', 'Overtime', 'Week Ending', 'Notes'],
+      ];
+
+      let grandTotalRaw = 0;
+      let grandTotalHours = 0;
+      let grandTotalOvertime = 0;
+
+      // Sort staff alphabetically
+      const sortedStaff = Array.from(staffMap.values()).sort((a, b) =>
+        a.staff.name.localeCompare(b.staff.name)
+      );
+
+      sortedStaff.forEach(({ staff, logs: staffLogs }) => {
+        // Group by week for overtime calculation
+        const weekGroups = new Map<string, ClockLog[]>();
+        staffLogs.forEach(log => {
+          const { start } = getWeekDates(new Date(log.clock_in_time));
+          const weekKey = formatDate(start);
+          if (!weekGroups.has(weekKey)) weekGroups.set(weekKey, []);
+          weekGroups.get(weekKey)!.push(log);
+        });
+
+        let staffTotalRaw = 0;
+        let staffTotalHours = 0;
+        let staffTotalOvertime = 0;
+
+        // Sort weeks chronologically
+        const sortedWeeks = Array.from(weekGroups.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+
+        sortedWeeks.forEach(([, weekLogs]) => {
+          let weekTotal = 0;
+          weekLogs.forEach(log => {
+            const clockIn = new Date(log.clock_in_time);
+            const clockOut = log.clock_out_time ? new Date(log.clock_out_time) : null;
+            const rawMinutes = clockOut ? (clockOut.getTime() - clockIn.getTime()) / 60000 : 0;
+            const { end: weekEnd } = getWeekDates(clockIn);
+
+            const logBreaks = rangeBreaks.filter(b => b.clock_log_id === log.id);
+            const breakMins = logBreaks
+              .filter(b => b.break_type === 'break')
+              .reduce((sum, b) => sum + (b.duration_minutes || 0), 0);
+
+            const lunchBreak = logBreaks.find(b => b.break_type === 'break' && b.break_end);
+            const lunchMins = lunchBreak && lunchBreak.break_end
+              ? Math.round((new Date(lunchBreak.break_end).getTime() - new Date(lunchBreak.break_start).getTime()) / 60000)
+              : 0;
+
+            const finalMinutes = rangeCorrMap.has(log.id)
+              ? Math.max(0, rangeCorrMap.get(log.id) || 0)
+              : (log.duration_minutes ? Math.max(0, log.duration_minutes) : 0);
+            weekTotal += finalMinutes;
+            staffTotalRaw += rawMinutes;
+
+            rows.push([
+              staff.name,
+              staff.employee_number || '',
+              formatDate(clockIn),
+              clockIn.toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: true }),
+              clockOut ? clockOut.toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: true }) : 'In Progress',
+              rawMinutes > 0 ? formatHM(rawMinutes) : '-',
+              breakMins > 0 ? `${breakMins}m` : '',
+              lunchMins > 0 ? `${lunchMins}m` : '',
+              finalMinutes > 0 ? formatHM(finalMinutes) : '-',
+              '',
+              formatDate(weekEnd),
+              log.notes || '',
+            ]);
+          });
+
+          const weekOvertime = Math.max(0, weekTotal - 40 * 60);
+          staffTotalHours += weekTotal;
+          staffTotalOvertime += weekOvertime;
+
+          // Mark overtime on last entry of the week
+          if (weekOvertime > 0 && weekLogs.length > 0) {
+            rows[rows.length - 1][9] = formatHM(weekOvertime);
+          }
+        });
+
+        // Staff subtotal row
+        rows.push([
+          `--- ${staff.name} TOTAL ---`,
+          staff.employee_number || '',
+          '',
+          '',
+          '',
+          staffTotalRaw > 0 ? formatHM(staffTotalRaw) : '-',
+          '',
+          '',
+          staffTotalHours > 0 ? formatHM(staffTotalHours) : '-',
+          staffTotalOvertime > 0 ? formatHM(staffTotalOvertime) : '-',
+          '',
+          '',
+        ]);
+        rows.push(['', '', '', '', '', '', '', '', '', '', '', '']);
+
+        grandTotalRaw += staffTotalRaw;
+        grandTotalHours += staffTotalHours;
+        grandTotalOvertime += staffTotalOvertime;
+      });
+
+      // Grand total
+      rows.push([
+        '=== GRAND TOTAL ===',
+        '',
+        `${rangeStart} to ${rangeEnd}`,
+        '',
+        '',
+        grandTotalRaw > 0 ? formatHM(grandTotalRaw) : '-',
+        '',
+        '',
+        grandTotalHours > 0 ? formatHM(grandTotalHours) : '-',
+        grandTotalOvertime > 0 ? formatHM(grandTotalOvertime) : '-',
+        '',
+        '',
+      ]);
+
+      const csv = rows.map((r, ri) => r.map((c, ci) => {
+        if (ri > 0 && ci === 1 && c) return `="${c}"`;
+        return `"${c}"`;
+      }).join(',')).join('\n');
+      const filename = `moja_timesheet_${rangeStart.replace(/-/g, '')}_to_${rangeEnd.replace(/-/g, '')}.csv`;
+      downloadBlob(csv, filename);
+    } finally {
+      setRangeExporting(false);
+    }
+  }
+
+  const weekData = getStaffWeekData();
+  const weekStart = new Date(weekOf);
+  const { end: weekEnd } = getWeekDates(weekStart);
+
+  const dailyTotals = DAY_NAMES.map((name, i) => ({
+    name,
+    hours: weekData.reduce((sum, d) => sum + d.dailyFinal[i], 0) / 60,
+  }));
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div>
+        <h2 className="text-2xl font-bold text-moja-blue">Weekly Time Report</h2>
+        <p className="text-sm font-semibold text-moja-blue/50 mt-1">
+          Week of {weekStart.toLocaleDateString('en-US', { timeZone: 'America/New_York', weekday: 'long', month: 'long', day: 'numeric' })} - {weekEnd.toLocaleDateString('en-US', { timeZone: 'America/New_York', weekday: 'long', month: 'long', day: 'numeric' })}
+        </p>
+      </div>
+
+      {/* Controls */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex items-center gap-2">
+          <Calendar className="w-5 h-5 text-moja-blue/50" />
+          <input
+            type="date"
+            value={weekOf}
+            onChange={(e) => setWeekOf(e.target.value)}
+            className="h-12 px-4 font-semibold text-moja-blue border-2 border-moja-blue/20 rounded-xl focus:border-moja-orange focus:outline-none"
+          />
+        </div>
+        <select
+          value={filterStaff}
+          onChange={(e) => setFilterStaff(e.target.value)}
+          className="h-12 px-4 font-semibold text-moja-blue border-2 border-moja-blue/20 rounded-xl focus:border-moja-orange focus:outline-none"
+        >
+          <option value="">All Staff</option>
+          {staffList.filter(s => s.is_active).map(s => (
+            <option key={s.id} value={s.id}>{s.name}</option>
+          ))}
+        </select>
+        <button
+          onClick={() => setViewMode(v => v === 'table' ? 'chart' : 'table')}
+          className="h-12 px-4 inline-flex items-center gap-2 font-semibold text-moja-blue border-2 border-moja-blue/20 rounded-xl hover:border-moja-aqua hover:text-moja-aqua transition-colors"
+        >
+          <BarChart3 className="w-4 h-4" />
+          {viewMode === 'table' ? 'Chart' : 'Table'}
+        </button>
+        <div className="ml-auto flex items-center gap-2">
+          <button
+            onClick={() => setShowDateRange(!showDateRange)}
+            className={`inline-flex items-center gap-2 px-5 h-12 border-2 rounded-xl font-bold active:scale-[0.98] transition-all touch-manipulation ${
+              showDateRange
+                ? 'border-moja-aqua bg-moja-aqua/10 text-moja-aqua'
+                : 'border-moja-blue/20 text-moja-blue hover:border-moja-aqua hover:text-moja-aqua'
+            }`}
+          >
+            <CalendarRange className="w-5 h-5" />
+            Download Report
+          </button>
+        </div>
+      </div>
+
+      {/* Date Range Export Panel */}
+      {showDateRange && (
+        <div className="bg-white rounded-xl border-2 border-moja-aqua/30 p-6 shadow-sm animate-in fade-in slide-in-from-top-2 duration-200">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-bold text-moja-blue">Download Date Range Report</h3>
+            <button
+              onClick={() => setShowDateRange(false)}
+              className="p-2 rounded-lg text-moja-blue/40 hover:text-moja-blue hover:bg-gray-100 transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+          <div className="flex flex-wrap items-end gap-4">
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-bold text-moja-blue/60 uppercase tracking-wide">Start Date</label>
+              <input
+                type="date"
+                value={rangeStart}
+                onChange={(e) => setRangeStart(e.target.value)}
+                className="h-12 px-4 font-semibold text-moja-blue border-2 border-moja-blue/20 rounded-xl focus:border-moja-aqua focus:outline-none"
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-bold text-moja-blue/60 uppercase tracking-wide">End Date</label>
+              <input
+                type="date"
+                value={rangeEnd}
+                onChange={(e) => setRangeEnd(e.target.value)}
+                className="h-12 px-4 font-semibold text-moja-blue border-2 border-moja-blue/20 rounded-xl focus:border-moja-aqua focus:outline-none"
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-bold text-moja-blue/60 uppercase tracking-wide">Staff Member</label>
+              <select
+                value={rangeStaff}
+                onChange={(e) => setRangeStaff(e.target.value)}
+                className="h-12 px-4 font-semibold text-moja-blue border-2 border-moja-blue/20 rounded-xl focus:border-moja-aqua focus:outline-none"
+              >
+                <option value="">All Staff</option>
+                {staffList.filter(s => s.is_active).map(s => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </select>
+            </div>
+            <button
+              onClick={exportDateRangeCSV}
+              disabled={rangeExporting || !rangeStart || !rangeEnd}
+              className="inline-flex items-center gap-2 px-6 h-12 bg-moja-aqua text-white rounded-xl font-bold hover:bg-moja-aqua/90 active:scale-[0.98] transition-all touch-manipulation disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {rangeExporting ? (
+                <Loader2 className="w-5 h-5 animate-spin" />
+              ) : (
+                <Download className="w-5 h-5" />
+              )}
+              {rangeExporting ? 'Generating...' : 'Download CSV'}
+            </button>
+          </div>
+          <p className="text-xs text-moja-blue/40 mt-3 font-medium">
+            Report includes per-employee entries grouped by week with overtime calculations and subtotals.
+          </p>
+        </div>
       )}
 
-      {/* Main Content */}
-      <main className="relative z-10 flex-1 flex items-center justify-center p-3 sm:p-6">
-        <div className="w-full max-w-4xl flex flex-col lg:flex-row items-center lg:items-stretch gap-4 lg:gap-10">
+      {/* Chart View */}
+      {viewMode === 'chart' && (
+        <div className="bg-white rounded-xl border border-gray-100 p-6 shadow-sm">
+          <h3 className="text-sm font-bold text-moja-blue/60 mb-4 uppercase tracking-wide">Daily Hours (All Staff)</h3>
+          <HoursBarChart data={dailyTotals} />
 
-          {/* Clock Section - hidden on very small screens when not needed, compact on mobile */}
-          <div className="flex-1 flex flex-col items-center justify-center hidden sm:flex">
-            {/* Analog Clock */}
-            <div className="mb-4 sm:mb-6">
-              <div className="relative w-40 h-40 sm:w-56 sm:h-56 lg:w-64 lg:h-64">
-                <svg viewBox="0 0 200 200" className="w-full h-full drop-shadow-lg">
-                  <circle cx="100" cy="100" r="96" fill="white" stroke="#355574" strokeWidth="3" />
-
-                  {Array.from({ length: 12 }, (_, i) => {
-                    const angle = (i * 30 - 90) * (Math.PI / 180);
-                    const x1 = 100 + 80 * Math.cos(angle);
-                    const y1 = 100 + 80 * Math.sin(angle);
-                    const x2 = 100 + 90 * Math.cos(angle);
-                    const y2 = 100 + 90 * Math.sin(angle);
-                    return (
-                      <line
-                        key={i}
-                        x1={x1} y1={y1} x2={x2} y2={y2}
-                        stroke="#355574"
-                        strokeWidth={i % 3 === 0 ? 3 : 1.5}
-                        strokeLinecap="round"
-                      />
-                    );
-                  })}
-
-                  {Array.from({ length: 60 }, (_, i) => {
-                    if (i % 5 === 0) return null;
-                    const angle = (i * 6 - 90) * (Math.PI / 180);
-                    const x1 = 100 + 86 * Math.cos(angle);
-                    const y1 = 100 + 86 * Math.sin(angle);
-                    const x2 = 100 + 90 * Math.cos(angle);
-                    const y2 = 100 + 90 * Math.sin(angle);
-                    return (
-                      <line
-                        key={`m${i}`}
-                        x1={x1} y1={y1} x2={x2} y2={y2}
-                        stroke="#355574"
-                        strokeWidth="0.5"
-                        opacity="0.4"
-                        strokeLinecap="round"
-                      />
-                    );
-                  })}
-
-                  <circle cx="100" cy="18" r="4" fill="#e66d38" />
-                  <circle cx="182" cy="100" r="4" fill="#6dccc2" />
-                  <circle cx="100" cy="182" r="4" fill="#efd35c" />
-                  <circle cx="18" cy="100" r="4" fill="#df76b6" />
-
-                  <line
-                    x1="100" y1="100"
-                    x2={100 + 45 * Math.cos((hourDeg - 90) * Math.PI / 180)}
-                    y2={100 + 45 * Math.sin((hourDeg - 90) * Math.PI / 180)}
-                    stroke="#355574"
-                    strokeWidth="4"
-                    strokeLinecap="round"
-                  />
-
-                  <line
-                    x1="100" y1="100"
-                    x2={100 + 65 * Math.cos((minuteDeg - 90) * Math.PI / 180)}
-                    y2={100 + 65 * Math.sin((minuteDeg - 90) * Math.PI / 180)}
-                    stroke="#355574"
-                    strokeWidth="2.5"
-                    strokeLinecap="round"
-                  />
-
-                  <line
-                    x1={100 - 15 * Math.cos((secondDeg - 90) * Math.PI / 180)}
-                    y1={100 - 15 * Math.sin((secondDeg - 90) * Math.PI / 180)}
-                    x2={100 + 70 * Math.cos((secondDeg - 90) * Math.PI / 180)}
-                    y2={100 + 70 * Math.sin((secondDeg - 90) * Math.PI / 180)}
-                    stroke="#e66d38"
-                    strokeWidth="1.5"
-                    strokeLinecap="round"
-                  />
-
-                  <circle cx="100" cy="100" r="5" fill="#e66d38" />
-                  <circle cx="100" cy="100" r="2" fill="white" />
-                </svg>
-              </div>
-            </div>
-
-            {/* Digital time */}
-            <div className="text-center">
-              <div className="text-3xl sm:text-4xl lg:text-5xl font-bold text-moja-blue font-mono tracking-tight">
-                {timeString}
-              </div>
-              <div className="text-sm sm:text-base text-moja-blue/60 font-semibold mt-1">
-                {dateString}
-              </div>
-              <BrandDots className="justify-center mt-2" />
-            </div>
-          </div>
-
-          {/* Mobile compact time header - shown only on small screens */}
-          <div className="sm:hidden w-full text-center pb-1">
-            <div className="text-2xl font-bold text-moja-blue font-mono tracking-tight">
-              {timeString}
-            </div>
-            <div className="text-xs text-moja-blue/60 font-semibold">
-              {dateString}
-            </div>
-          </div>
-
-          {/* PIN Entry Section */}
-          <div className="w-full max-w-sm lg:w-[360px] lg:flex-shrink-0 flex flex-col">
-            <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
-              {/* Staff name display */}
-              {staffInfo && (
-                <div className={`px-4 py-3 sm:px-5 sm:py-4 border-b flex items-center gap-3 animate-fade-in ${
-                  staffInfo.is_on_break
-                    ? 'bg-amber-50 border-amber-100'
-                    : staffInfo.is_clocked_in
-                      ? 'bg-green-50 border-green-100'
-                      : 'bg-moja-bg border-gray-100'
-                }`}>
-                  <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full flex items-center justify-center ${
-                    staffInfo.is_on_break
-                      ? 'bg-amber-100'
-                      : staffInfo.is_clocked_in
-                        ? 'bg-green-100'
-                        : 'bg-moja-blue/10'
-                  }`}>
-                    {staffInfo.is_on_break
-                      ? <UtensilsCrossed className="w-4 h-4 sm:w-5 sm:h-5 text-amber-600" />
-                      : <User className={`w-4 h-4 sm:w-5 sm:h-5 ${staffInfo.is_clocked_in ? 'text-green-600' : 'text-moja-blue'}`} />
-                    }
-                  </div>
-                  <div>
-                    <p className="text-sm sm:text-base font-bold text-moja-blue">{staffInfo.staff_name}</p>
-                    <p className={`text-xs font-semibold ${
-                      staffInfo.is_on_break
-                        ? 'text-amber-600'
-                        : staffInfo.is_clocked_in
-                          ? 'text-green-600'
-                          : 'text-moja-blue/50'
-                    }`}>
-                      {staffInfo.is_on_break
-                        ? 'On lunch break'
-                        : staffInfo.is_clocked_in
-                          ? 'Currently clocked in'
-                          : 'Currently clocked out'}
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {lookupError && (
-                <div className="px-4 py-2.5 sm:px-5 sm:py-3 border-b border-red-100 bg-red-50 animate-fade-in">
-                  <p className="text-sm font-semibold text-red-600">{lookupError}</p>
-                </div>
-              )}
-
-              {lookingUp && (
-                <div className="px-4 py-2.5 sm:px-5 sm:py-3 border-b border-gray-100 bg-moja-bg flex items-center gap-2">
-                  <div className="w-4 h-4 border-2 border-moja-orange border-t-transparent rounded-full animate-spin" />
-                  <p className="text-sm font-semibold text-moja-blue/60">Verifying PIN...</p>
-                </div>
-              )}
-
-              {/* PIN Display */}
-              <div className="px-4 pt-4 pb-3 sm:px-6 sm:pt-5 sm:pb-4">
-                <p className="text-center text-xs sm:text-sm font-bold text-moja-blue/60 uppercase tracking-wide mb-2.5 sm:mb-3">
-                  Enter Your PIN
-                </p>
-                <div className="flex justify-center gap-2.5 sm:gap-3">
-                  {[0, 1, 2, 3].map(i => (
-                    <div
-                      key={i}
-                      className={`w-12 h-12 sm:w-14 sm:h-14 rounded-xl border-2 flex items-center justify-center text-xl sm:text-2xl font-bold transition-all duration-150 ${
-                        pin.length > i
-                          ? 'border-moja-orange bg-moja-orange/5 text-moja-orange scale-105'
-                          : pin.length === i
-                            ? 'border-moja-blue/40 bg-moja-bg'
-                            : 'border-moja-blue/15 bg-moja-bg'
-                      }`}
-                    >
-                      {pin.length > i ? '\u2022' : ''}
+          {weekData.length > 1 && (
+            <div className="mt-6 pt-4 border-t border-gray-100">
+              <h3 className="text-sm font-bold text-moja-blue/60 mb-4 uppercase tracking-wide">By Staff Member</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {weekData.filter(d => d.totalFinal > 0).map(d => (
+                  <div key={d.staff.id} className="border border-gray-100 rounded-lg p-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-bold text-moja-blue">{d.staff.name}</span>
+                      <span className="text-sm font-bold text-moja-blue font-mono">{formatDec(d.totalFinal)}</span>
                     </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Numeric Keypad */}
-              <div className="px-4 pb-3 sm:px-5 sm:pb-4">
-                <div className="grid grid-cols-3 gap-2 sm:gap-2.5 max-w-[260px] sm:max-w-[280px] mx-auto">
-                  {['1','2','3','4','5','6','7','8','9'].map(digit => (
-                    <button
-                      key={digit}
-                      onClick={() => handleDigit(digit)}
-                      className="h-[52px] sm:h-[60px] rounded-xl bg-moja-blue text-white text-lg sm:text-xl font-bold hover:bg-moja-blue/80 active:scale-95 transition-all touch-manipulation"
-                    >
-                      {digit}
-                    </button>
-                  ))}
-                  <button
-                    onClick={handleClear}
-                    className="h-[52px] sm:h-[60px] rounded-xl bg-moja-yellow/30 hover:bg-moja-yellow/50 active:scale-95 text-xs font-bold text-moja-blue transition-all flex items-center justify-center gap-1 touch-manipulation"
-                  >
-                    <RotateCcw className="w-3.5 h-3.5" />
-                    Clear
-                  </button>
-                  <button
-                    onClick={() => handleDigit('0')}
-                    className="h-[52px] sm:h-[60px] rounded-xl bg-moja-blue text-white text-lg sm:text-xl font-bold hover:bg-moja-blue/80 active:scale-95 transition-all touch-manipulation"
-                  >
-                    0
-                  </button>
-                  <button
-                    onClick={handleDelete}
-                    className="h-[52px] sm:h-[60px] rounded-xl bg-moja-pink/20 hover:bg-moja-pink/40 active:scale-95 text-xs font-bold text-moja-blue transition-all flex items-center justify-center gap-1 touch-manipulation"
-                  >
-                    <Delete className="w-3.5 h-3.5" />
-                    Del
-                  </button>
-                </div>
-              </div>
-
-              {/* Clock In / Clock Out / Lunch / Break Buttons */}
-              <div className="px-4 pb-4 space-y-2.5 sm:px-5 sm:pb-5 sm:space-y-3">
-                <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
-                  <button
-                    onClick={() => handleClock('in')}
-                    disabled={!staffInfo || loading || (staffInfo?.is_clocked_in ?? false)}
-                    className="h-[54px] sm:h-[64px] rounded-xl bg-moja-orange text-white text-sm sm:text-base font-bold flex items-center justify-center gap-2 transition-all touch-manipulation disabled:opacity-30 disabled:cursor-not-allowed hover:bg-moja-orange/90 active:scale-[0.97]"
-                  >
-                    {loading ? (
-                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    ) : (
-                      <>
-                        <LogIn className="w-4 h-4 sm:w-5 sm:h-5" />
-                        Clock In
-                      </>
-                    )}
-                  </button>
-                  <button
-                    onClick={() => handleClock('out')}
-                    disabled={!staffInfo || loading || !(staffInfo?.is_clocked_in ?? false)}
-                    className="h-[54px] sm:h-[64px] rounded-xl bg-moja-aqua text-white text-sm sm:text-base font-bold flex items-center justify-center gap-2 transition-all touch-manipulation disabled:opacity-30 disabled:cursor-not-allowed hover:bg-moja-aqua/90 active:scale-[0.97]"
-                  >
-                    {loading ? (
-                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    ) : (
-                      <>
-                        <LogOut className="w-4 h-4 sm:w-5 sm:h-5" />
-                        Clock Out
-                      </>
-                    )}
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
-                  <button
-                    onClick={() => handleBreak(staffInfo?.is_on_break ? 'end' : 'start', 'lunch')}
-                    disabled={!staffInfo || loading || !(staffInfo?.is_clocked_in ?? false)}
-                    className={`h-[46px] sm:h-[54px] rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-1.5 sm:gap-2 transition-all touch-manipulation disabled:opacity-30 disabled:cursor-not-allowed active:scale-[0.98] ${
-                      staffInfo?.is_on_break
-                        ? 'bg-amber-500 text-white hover:bg-amber-500/90'
-                        : 'bg-amber-50 text-amber-700 border-2 border-amber-200 hover:bg-amber-100'
-                    }`}
-                  >
-                    <UtensilsCrossed className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                    {staffInfo?.is_on_break ? 'End Lunch' : 'Lunch'}
-                  </button>
-                  <button
-                    onClick={() => handleBreak(staffInfo?.is_on_break ? 'end' : 'start', 'break')}
-                    disabled={!staffInfo || loading || !(staffInfo?.is_clocked_in ?? false)}
-                    className={`h-[46px] sm:h-[54px] rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-1.5 sm:gap-2 transition-all touch-manipulation disabled:opacity-30 disabled:cursor-not-allowed active:scale-[0.98] ${
-                      staffInfo?.is_on_break
-                        ? 'bg-sky-500 text-white hover:bg-sky-500/90'
-                        : 'bg-sky-50 text-sky-700 border-2 border-sky-200 hover:bg-sky-100'
-                    }`}
-                  >
-                    <Coffee className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                    {staffInfo?.is_on_break ? 'End Break' : 'Break'}
-                  </button>
-                </div>
+                    <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all ${d.overtime > 0 ? 'bg-moja-orange' : 'bg-moja-aqua'}`}
+                        style={{ width: `${Math.min(100, (d.totalFinal / (40 * 60)) * 100)}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
-
-            <div className="mt-4 sm:mt-5 flex items-center justify-center gap-4">
-              <a
-                href="#/my-hours"
-                className="text-xs text-moja-blue/30 hover:text-moja-aqua transition-colors font-semibold"
-              >
-                My Hours
-              </a>
-              <span className="text-moja-blue/10">|</span>
-              <a
-                href="#/admin"
-                className="text-xs text-moja-blue/30 hover:text-moja-aqua transition-colors font-semibold"
-              >
-                Admin
-              </a>
-            </div>
-          </div>
-
+          )}
         </div>
-      </main>
+      )}
+
+      {/* Table View */}
+      {viewMode === 'table' && (
+        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden shadow-sm">
+          {loading ? (
+            <div className="flex items-center justify-center h-32">
+              <div className="w-8 h-8 border-4 border-moja-blue border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="bg-moja-blue">
+                    <th className="text-left px-4 py-4 text-sm font-bold text-white">
+                      <button
+                        onClick={() => setSortDir(d => d === 'asc' ? 'desc' : 'asc')}
+                        className="inline-flex items-center gap-1 hover:text-moja-aqua transition-colors"
+                      >
+                        Staff Name
+                        <ArrowUpDown className="w-3 h-3" />
+                      </button>
+                    </th>
+                    {DAY_NAMES.map(day => (
+                      <th key={day} className="text-center px-3 py-4 text-sm font-bold text-white">{day}</th>
+                    ))}
+                    <th className="text-center px-3 py-4 text-sm font-bold text-white">Raw</th>
+                    <th className="text-center px-3 py-4 text-sm font-bold text-white">Final</th>
+                    <th className="text-center px-3 py-4 text-sm font-bold text-white">OT</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {weekData.map(({ staff, dailyFinal, totalRaw, totalFinal, overtime }, idx) => (
+                    <tr key={staff.id} className={idx % 2 === 1 ? 'bg-gray-50/50' : ''}>
+                      <td className="px-4 py-3 font-bold text-moja-blue">{staff.name}</td>
+                      {dailyFinal.map((m, i) => (
+                        <td key={i} className="text-center px-3 py-3 text-sm font-semibold text-moja-blue/70 font-mono">
+                          {formatDec(m)}
+                        </td>
+                      ))}
+                      <td className="text-center px-3 py-3 font-semibold text-moja-blue/50 font-mono">
+                        {formatDec(totalRaw)}
+                      </td>
+                      <td className="text-center px-3 py-3 font-bold text-moja-blue font-mono bg-moja-blue/5">
+                        {formatDec(totalFinal)}
+                      </td>
+                      <td className={`text-center px-3 py-3 font-bold font-mono ${overtime > 0 ? 'text-moja-orange bg-moja-orange/10' : 'text-moja-blue/30'}`}>
+                        {formatDec(overtime)}
+                      </td>
+                    </tr>
+                  ))}
+                  {weekData.length === 0 && (
+                    <tr>
+                      <td colSpan={11} className="px-4 py-8 text-center text-moja-blue/40 font-semibold">
+                        No data for this week
+                      </td>
+                    </tr>
+                  )}
+                  {weekData.length > 0 && (
+                    <tr className="bg-moja-blue/5 font-bold">
+                      <td className="px-4 py-3 text-moja-blue">Totals</td>
+                      {DAY_NAMES.map((_, i) => (
+                        <td key={i} className="text-center px-3 py-3 text-sm text-moja-blue font-mono">
+                          {formatDec(weekData.reduce((s, d) => s + d.dailyFinal[i], 0))}
+                        </td>
+                      ))}
+                      <td className="text-center px-3 py-3 text-moja-blue/50 font-mono">
+                        {formatDec(weekData.reduce((s, d) => s + d.totalRaw, 0))}
+                      </td>
+                      <td className="text-center px-3 py-3 text-moja-blue font-mono">
+                        {formatDec(weekData.reduce((s, d) => s + d.totalFinal, 0))}
+                      </td>
+                      <td className="text-center px-3 py-3 text-moja-orange font-mono">
+                        {formatDec(weekData.reduce((s, d) => s + d.overtime, 0))}
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
