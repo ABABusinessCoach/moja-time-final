@@ -1952,12 +1952,19 @@ Deno.serve(async (req: Request) => {
       // Fetch all reports for this employee (current + previous periods)
       const { data: allReports } = await supabase
         .from("timecard_reports")
-        .select("id, access_token, status, pay_period_id, pay_periods (start_date, end_date)")
+        .select("id, access_token, status, pay_period_id, generated_at, pay_periods (start_date, end_date)")
         .eq("staff_id", staff.id)
-        .order("pay_period_id", { ascending: false })
+        .order("generated_at", { ascending: false })
         .limit(5);
 
-      const availableReports = (allReports || []).map((r: { id: string; access_token: string; status: string; pay_periods: { start_date: string; end_date: string } | null }) => ({
+      // Sort by pay period start_date descending (most recent period first)
+      const sortedReports = (allReports || []).sort((a: { pay_periods: { start_date: string } | null }, b: { pay_periods: { start_date: string } | null }) => {
+        const aDate = a.pay_periods?.start_date || "";
+        const bDate = b.pay_periods?.start_date || "";
+        return bDate.localeCompare(aDate);
+      });
+
+      const availableReports = sortedReports.map((r: { id: string; access_token: string; status: string; pay_periods: { start_date: string; end_date: string } | null }) => ({
         id: r.id,
         access_token: r.access_token,
         status: r.status,

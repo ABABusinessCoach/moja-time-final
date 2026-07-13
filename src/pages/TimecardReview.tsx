@@ -1331,7 +1331,9 @@ function AdminWeekSection({ week, canEdit, onEditShift, onAddShift, onApproveCor
                     } ${canEdit ? 'cursor-pointer' : ''}`}
                     onClick={() => { if (canEdit && sr) onEditShift(sr.shift); else if (canEdit && !sr) onAddShift(day.dateKey); }}
                   >
-                    <td className="px-3 py-2.5 font-bold text-gray-700">{day.dayName}</td>
+                    <td className="px-3 py-2.5 font-bold text-gray-700">
+                        {day.dayName} <span className="font-normal text-gray-400 text-xs">{day.date.getMonth() + 1}/{day.date.getDate()}</span>
+                      </td>
                     <td className="px-2 py-2.5 whitespace-nowrap">
                       {sr ? (
                         <AdminCellValue
@@ -1440,7 +1442,7 @@ function AdminWeekSection({ week, canEdit, onEditShift, onAddShift, onApproveCor
                     } ${canEdit ? 'cursor-pointer' : ''}`}
                     onClick={() => { if (canEdit) onEditShift(sr.shift); }}
                   >
-                    <td className="px-3 py-2.5 font-bold text-gray-700">{isFirst ? day.dayName : ''}</td>
+                    <td className="px-3 py-2.5 font-bold text-gray-700">{isFirst ? <>{day.dayName} <span className="font-normal text-gray-400 text-xs">{day.date.getMonth() + 1}/{day.date.getDate()}</span></> : ''}</td>
                     <td className="px-2 py-2.5 whitespace-nowrap">
                       <AdminCellValue
                         original={formatTimeEST(sr.shift.clock_in_time)}

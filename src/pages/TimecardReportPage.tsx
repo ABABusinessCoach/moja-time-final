@@ -1154,7 +1154,9 @@ function WeekSection({ week, canEdit, onEditShift, onAddShift }: {
                     } ${canEdit ? 'cursor-pointer' : ''}`}
                     onClick={() => { if (canEdit && sr) onEditShift(sr.shift); else if (canEdit && !sr) onAddShift(day.dateKey); }}
                   >
-                    <td className="px-3 py-2.5 font-bold text-gray-700">{day.dayName}</td>
+                    <td className="px-3 py-2.5 font-bold text-gray-700">
+                        {day.dayName} <span className="font-normal text-gray-400 text-xs">{day.date.getMonth() + 1}/{day.date.getDate()}</span>
+                      </td>
                     <td className="px-2 py-2.5 text-gray-600 whitespace-nowrap">
                       {sr ? (
                         <CellValue
@@ -1256,7 +1258,7 @@ function WeekSection({ week, canEdit, onEditShift, onAddShift }: {
                     } ${canEdit ? 'cursor-pointer' : ''}`}
                     onClick={() => { if (canEdit) onEditShift(sr.shift); }}
                   >
-                    <td className="px-3 py-2.5 font-bold text-gray-700">{isFirst ? day.dayName : ''}</td>
+                    <td className="px-3 py-2.5 font-bold text-gray-700">{isFirst ? <>{day.dayName} <span className="font-normal text-gray-400 text-xs">{day.date.getMonth() + 1}/{day.date.getDate()}</span></> : ''}</td>
                     <td className="px-2 py-2.5 text-gray-600 whitespace-nowrap">
                       <CellValue
                         original={formatTimeEST(sr.shift.clock_in_time)}
