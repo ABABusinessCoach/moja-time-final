@@ -177,9 +177,14 @@ function buildWeekBlocks(detail: ReportDetail): WeekBlock[] {
         const sCorrection = corrections.find(c => c.clock_log_id === s.id && c.approval_status === 'approved') || null;
         const sPending = corrections.find(c => c.clock_log_id === s.id && c.approval_status === 'pending') || null;
         const sNotes = notes.filter(n => n.clock_log_id === s.id);
-        const shiftMins = sCorrection
+        let shiftMins = sCorrection
           ? Math.max(0, sCorrection.proposed_duration_minutes || 0)
           : Math.max(0, s.duration_minutes || 0);
+        // Deduct lunch (unpaid); breaks are paid and not deducted
+        const lunchMins = sBreaks
+          .filter(b => b.break_type === 'lunch' && b.duration_minutes)
+          .reduce((sum, b) => sum + (b.duration_minutes || 0), 0);
+        shiftMins = Math.max(0, shiftMins - lunchMins);
         netMinutes += shiftMins;
         shiftRows.push({ shift: s, breaks: sBreaks, correction: sCorrection, pendingCorrection: sPending, notes: sNotes, shiftMinutes: shiftMins });
       }
