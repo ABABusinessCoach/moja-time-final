@@ -257,6 +257,8 @@ export function TimecardReview() {
   const [editClockOut, setEditClockOut] = useState('');
   const [editBreakOut, setEditBreakOut] = useState('');
   const [editBreakIn, setEditBreakIn] = useState('');
+  const [editLunchOut, setEditLunchOut] = useState('');
+  const [editLunchIn, setEditLunchIn] = useState('');
   const [editNote, setEditNote] = useState('');
   const [savingCorrection, setSavingCorrection] = useState(false);
 
@@ -267,6 +269,8 @@ export function TimecardReview() {
   const [adminAddClockOut, setAdminAddClockOut] = useState('');
   const [adminAddBreakOut, setAdminAddBreakOut] = useState('');
   const [adminAddBreakIn, setAdminAddBreakIn] = useState('');
+  const [adminAddLunchOut, setAdminAddLunchOut] = useState('');
+  const [adminAddLunchIn, setAdminAddLunchIn] = useState('');
   const [savingAdminAdd, setSavingAdminAdd] = useState(false);
 
   // Send timecards modal state
@@ -403,6 +407,9 @@ export function TimecardReview() {
     const breakLog = shiftBreaks.find(b => b.break_type === 'break');
     setEditBreakOut(breakLog?.break_start ? toESTInputTime(breakLog.break_start) : '');
     setEditBreakIn(breakLog?.break_end ? toESTInputTime(breakLog.break_end) : '');
+    const lunchLog = shiftBreaks.find(b => b.break_type === 'lunch');
+    setEditLunchOut(lunchLog?.break_start ? toESTInputTime(lunchLog.break_start) : '');
+    setEditLunchIn(lunchLog?.break_end ? toESTInputTime(lunchLog.break_end) : '');
   }
 
   function openAdminAddShiftModal(dateKey: string) {
@@ -412,6 +419,8 @@ export function TimecardReview() {
     setAdminAddClockOut('');
     setAdminAddBreakOut('');
     setAdminAddBreakIn('');
+    setAdminAddLunchOut('');
+    setAdminAddLunchIn('');
   }
 
   async function handleAdminAddShift() {
@@ -432,6 +441,11 @@ export function TimecardReview() {
     if (adminAddBreakOut && adminAddBreakIn) {
       body.break_start = toISOFromESTTime(adminAddDate, adminAddBreakOut);
       body.break_end = toISOFromESTTime(adminAddDate, adminAddBreakIn);
+    }
+
+    if (adminAddLunchOut && adminAddLunchIn) {
+      body.lunch_start = toISOFromESTTime(adminAddDate, adminAddLunchOut);
+      body.lunch_end = toISOFromESTTime(adminAddDate, adminAddLunchIn);
     }
 
     const result = await callTimecardFunction('/admin-add-shift', {
@@ -497,6 +511,10 @@ export function TimecardReview() {
         break_edits: {
           break_start: editBreakOut ? toISOFromESTTime(shiftDate, editBreakOut) : null,
           break_end: editBreakIn ? toISOFromESTTime(shiftDate, editBreakIn) : null,
+        },
+        lunch_edits: {
+          lunch_start: editLunchOut ? toISOFromESTTime(shiftDate, editLunchOut) : null,
+          lunch_end: editLunchIn ? toISOFromESTTime(shiftDate, editLunchIn) : null,
         },
         note: editNote.trim() || null,
       },
@@ -830,21 +848,57 @@ export function TimecardReview() {
                     </div>
                   </div>
                 </div>
+                <div className="border-t border-gray-100 pt-3">
+                  <p className="text-[11px] font-semibold text-orange-700 uppercase tracking-wide mb-2">Lunch (Unpaid)</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1 block">Lunch Out</label>
+                      <input
+                        type="time"
+                        value={editLunchOut}
+                        onChange={e => setEditLunchOut(e.target.value)}
+                        className="w-full px-3 py-2 text-sm border-2 border-gray-200 rounded-lg focus:outline-none focus:border-orange-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1 block">Lunch In</label>
+                      <input
+                        type="time"
+                        value={editLunchIn}
+                        onChange={e => setEditLunchIn(e.target.value)}
+                        className="w-full px-3 py-2 text-sm border-2 border-gray-200 rounded-lg focus:outline-none focus:border-orange-500"
+                      />
+                    </div>
+                  </div>
+                </div>
                 {editClockIn && editClockOut && (() => {
                   const [hIn, mIn] = editClockIn.split(':').map(Number);
                   const [hOut, mOut] = editClockOut.split(':').map(Number);
                   const grossMins = Math.max(0, (hOut * 60 + mOut) - (hIn * 60 + mIn));
+                  let lunchMins = 0;
+                  if (editLunchOut && editLunchIn) {
+                    const [lOutH, lOutM] = editLunchOut.split(':').map(Number);
+                    const [lInH, lInM] = editLunchIn.split(':').map(Number);
+                    lunchMins = Math.max(0, (lInH * 60 + lInM) - (lOutH * 60 + lOutM));
+                  }
+                  const netMins = Math.max(0, grossMins - lunchMins);
                   const oldMins = editingShift.duration_minutes || 0;
-                  const diff = grossMins - oldMins;
+                  const diff = netMins - oldMins;
                   const newPeriodTotal = periodTotal + diff;
                   return (
                     <div className="bg-blue-50 rounded-lg p-3 space-y-1.5">
                       <div className="flex items-center justify-between">
                         <span className="text-xs text-blue-600 font-medium">Net shift hours:</span>
                         <span className="text-sm font-bold text-blue-700">
-                          {formatHM(grossMins)}
+                          {formatHM(netMins)}
                         </span>
                       </div>
+                      {lunchMins > 0 && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-orange-600 font-medium">Lunch deducted:</span>
+                          <span className="text-xs font-bold text-orange-600">-{formatHM(lunchMins)}</span>
+                        </div>
+                      )}
                       <div className="flex items-center justify-between border-t border-blue-100 pt-1.5">
                         <span className="text-xs text-blue-600 font-medium">New period total:</span>
                         <span className="text-sm font-bold text-blue-800">
@@ -952,17 +1006,37 @@ export function TimecardReview() {
                     />
                   </div>
                 </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[11px] font-semibold text-orange-700 uppercase tracking-wide mb-1 block">Lunch Out</label>
+                    <input
+                      type="time"
+                      value={adminAddLunchOut}
+                      onChange={e => setAdminAddLunchOut(e.target.value)}
+                      className="w-full px-3 py-2.5 text-sm border-2 border-gray-200 rounded-lg focus:outline-none focus:border-orange-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-semibold text-orange-700 uppercase tracking-wide mb-1 block">Lunch In</label>
+                    <input
+                      type="time"
+                      value={adminAddLunchIn}
+                      onChange={e => setAdminAddLunchIn(e.target.value)}
+                      className="w-full px-3 py-2.5 text-sm border-2 border-gray-200 rounded-lg focus:outline-none focus:border-orange-500"
+                    />
+                  </div>
+                </div>
                 {adminAddClockIn && adminAddClockOut && (() => {
                   const [hIn, mIn] = adminAddClockIn.split(':').map(Number);
                   const [hOut, mOut] = adminAddClockOut.split(':').map(Number);
                   const grossMins = Math.max(0, (hOut * 60 + mOut) - (hIn * 60 + mIn));
-                  let breakMins = 0;
-                  if (adminAddBreakOut && adminAddBreakIn) {
-                    const [bOutH, bOutM] = adminAddBreakOut.split(':').map(Number);
-                    const [bInH, bInM] = adminAddBreakIn.split(':').map(Number);
-                    breakMins = Math.max(0, (bInH * 60 + bInM) - (bOutH * 60 + bOutM));
+                  let lunchMins = 0;
+                  if (adminAddLunchOut && adminAddLunchIn) {
+                    const [lOutH, lOutM] = adminAddLunchOut.split(':').map(Number);
+                    const [lInH, lInM] = adminAddLunchIn.split(':').map(Number);
+                    lunchMins = Math.max(0, (lInH * 60 + lInM) - (lOutH * 60 + lOutM));
                   }
-                  const netMins = Math.max(0, grossMins - breakMins);
+                  const netMins = Math.max(0, grossMins - lunchMins);
                   const newPeriodTotal = periodTotal + netMins;
                   return (
                     <div className="bg-blue-50 rounded-lg p-3 space-y-1.5">
@@ -970,10 +1044,10 @@ export function TimecardReview() {
                         <span className="text-xs text-blue-600 font-medium">Net shift hours:</span>
                         <span className="text-sm font-bold text-blue-700">{formatHM(netMins)}</span>
                       </div>
-                      {breakMins > 0 && (
+                      {lunchMins > 0 && (
                         <div className="flex items-center justify-between">
-                          <span className="text-xs text-green-600 font-medium">Break deducted:</span>
-                          <span className="text-sm font-bold text-green-700">-{formatHM(breakMins)}</span>
+                          <span className="text-xs text-orange-600 font-medium">Lunch deducted:</span>
+                          <span className="text-sm font-bold text-orange-700">-{formatHM(lunchMins)}</span>
                         </div>
                       )}
                       <div className="flex items-center justify-between border-t border-blue-100 pt-1.5">

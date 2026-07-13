@@ -177,6 +177,8 @@ export function TimecardReportPage({ token }: { token: string }) {
   const [editingShift, setEditingShift] = useState<Shift | null>(null);
   const [editClockIn, setEditClockIn] = useState('');
   const [editClockOut, setEditClockOut] = useState('');
+  const [editBreakOut, setEditBreakOut] = useState('');
+  const [editBreakIn, setEditBreakIn] = useState('');
   const [editNote, setEditNote] = useState('');
   const [editMode, setEditMode] = useState<'times' | 'hours'>('hours');
   const [editHours, setEditHours] = useState('');
@@ -297,9 +299,13 @@ export function TimecardReportPage({ token }: { token: string }) {
   function openEditModal(shift: Shift) {
     setEditingShift(shift);
     const existingCorr = data?.corrections.find(c => c.clock_log_id === shift.id && c.approval_status !== 'rejected');
+    // Get existing break for this shift
+    const shiftBreak = data?.breaks.find(b => b.clock_log_id === shift.id);
     if (existingCorr) {
       setEditClockIn(toESTInputTime(existingCorr.proposed_clock_in));
       setEditClockOut(toESTInputTime(existingCorr.proposed_clock_out));
+      setEditBreakOut(existingCorr.proposed_break_start ? toESTInputTime(existingCorr.proposed_break_start) : (shiftBreak ? toESTInputTime(shiftBreak.break_start) : ''));
+      setEditBreakIn(existingCorr.proposed_break_end ? toESTInputTime(existingCorr.proposed_break_end) : (shiftBreak?.break_end ? toESTInputTime(shiftBreak.break_end) : ''));
       setEditNote(existingCorr.note || '');
       if (existingCorr.proposed_hours != null) {
         setEditMode('hours');
@@ -311,6 +317,8 @@ export function TimecardReportPage({ token }: { token: string }) {
     } else {
       setEditClockIn(toESTInputTime(shift.clock_in_time));
       setEditClockOut(shift.clock_out_time ? toESTInputTime(shift.clock_out_time) : '');
+      setEditBreakOut(shiftBreak ? toESTInputTime(shiftBreak.break_start) : '');
+      setEditBreakIn(shiftBreak?.break_end ? toESTInputTime(shiftBreak.break_end) : '');
       setEditNote('');
       setEditMode('hours');
       const netMins = Math.max(0, shift.duration_minutes || 0);
@@ -338,6 +346,9 @@ export function TimecardReportPage({ token }: { token: string }) {
       body.proposed_clock_in = toISOFromESTTime(shiftDate, editClockIn);
       body.proposed_clock_out = toISOFromESTTime(shiftDate, editClockOut);
     }
+
+    if (editBreakOut) body.proposed_break_start = toISOFromESTTime(shiftDate, editBreakOut);
+    if (editBreakIn) body.proposed_break_end = toISOFromESTTime(shiftDate, editBreakIn);
 
     const result = await callTimecardFunction('/corrections', { body });
     if (result.success) {
@@ -932,16 +943,49 @@ export function TimecardReportPage({ token }: { token: string }) {
                       />
                     </div>
                   </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-[11px] font-semibold text-green-700 uppercase tracking-wide mb-1 block">Lunch Out</label>
+                      <input
+                        type="time"
+                        value={editBreakOut}
+                        onChange={e => setEditBreakOut(e.target.value)}
+                        className="w-full px-3 py-2.5 text-sm border-2 border-gray-200 rounded-lg focus:outline-none focus:border-green-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-semibold text-green-700 uppercase tracking-wide mb-1 block">Lunch In</label>
+                      <input
+                        type="time"
+                        value={editBreakIn}
+                        onChange={e => setEditBreakIn(e.target.value)}
+                        className="w-full px-3 py-2.5 text-sm border-2 border-gray-200 rounded-lg focus:outline-none focus:border-green-500"
+                      />
+                    </div>
+                  </div>
                   {editClockIn && editClockOut && (() => {
                     const [hIn, mIn] = editClockIn.split(':').map(Number);
                     const [hOut, mOut] = editClockOut.split(':').map(Number);
-                    const newMins = Math.max(0, (hOut * 60 + mOut) - (hIn * 60 + mIn));
+                    const grossMins = Math.max(0, (hOut * 60 + mOut) - (hIn * 60 + mIn));
+                    let breakMins = 0;
+                    if (editBreakOut && editBreakIn) {
+                      const [bOutH, bOutM] = editBreakOut.split(':').map(Number);
+                      const [bInH, bInM] = editBreakIn.split(':').map(Number);
+                      breakMins = Math.max(0, (bInH * 60 + bInM) - (bOutH * 60 + bOutM));
+                    }
+                    const netMins = Math.max(0, grossMins - breakMins);
                     return (
-                      <div className="bg-blue-50 rounded-lg p-3">
+                      <div className="bg-blue-50 rounded-lg p-3 space-y-1.5">
                         <div className="flex items-center justify-between">
-                          <span className="text-xs text-blue-600 font-medium">Updated shift hours:</span>
-                          <span className="text-sm font-bold text-blue-700">{formatHM(newMins)}</span>
+                          <span className="text-xs text-blue-600 font-medium">Net shift hours:</span>
+                          <span className="text-sm font-bold text-blue-700">{formatHM(netMins)}</span>
                         </div>
+                        {breakMins > 0 && (
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs text-green-600 font-medium">Lunch deducted:</span>
+                            <span className="text-sm font-bold text-green-700">-{formatHM(breakMins)}</span>
+                          </div>
+                        )}
                       </div>
                     );
                   })()}
@@ -1047,14 +1091,7 @@ export function TimecardReportPage({ token }: { token: string }) {
               {addShiftClockIn && addShiftClockOut && (() => {
                 const [hIn, mIn] = addShiftClockIn.split(':').map(Number);
                 const [hOut, mOut] = addShiftClockOut.split(':').map(Number);
-                const grossMins = Math.max(0, (hOut * 60 + mOut) - (hIn * 60 + mIn));
-                let breakMins = 0;
-                if (addShiftBreakOut && addShiftBreakIn) {
-                  const [bOutH, bOutM] = addShiftBreakOut.split(':').map(Number);
-                  const [bInH, bInM] = addShiftBreakIn.split(':').map(Number);
-                  breakMins = Math.max(0, (bInH * 60 + bInM) - (bOutH * 60 + bOutM));
-                }
-                const netMins = Math.max(0, grossMins - breakMins);
+                const netMins = Math.max(0, (hOut * 60 + mOut) - (hIn * 60 + mIn));
                 const newPeriodTotal = periodTotal + netMins;
                 return (
                   <div className="bg-blue-50 rounded-lg p-3 space-y-1.5">
@@ -1062,12 +1099,6 @@ export function TimecardReportPage({ token }: { token: string }) {
                       <span className="text-xs text-blue-600 font-medium">Net shift hours:</span>
                       <span className="text-sm font-bold text-blue-700">{formatHM(netMins)}</span>
                     </div>
-                    {breakMins > 0 && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs text-green-600 font-medium">Break deducted:</span>
-                        <span className="text-sm font-bold text-green-700">-{formatHM(breakMins)}</span>
-                      </div>
-                    )}
                     <div className="flex items-center justify-between border-t border-blue-100 pt-1.5">
                       <span className="text-xs text-blue-600 font-medium">New period total:</span>
                       <span className="text-sm font-bold text-blue-800">
