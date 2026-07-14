@@ -295,9 +295,10 @@ export function WeeklyReports() {
             const breakMins = logBreaks.filter(b => b.break_type === 'break').reduce((sum, b) => sum + (b.duration_minutes || 0), 0);
             const lunchMins = logBreaks.filter(b => b.break_type === 'lunch').reduce((sum, b) => sum + (b.duration_minutes || 0), 0);
 
-            const finalMinutes = rangeCorrMap.has(log.id)
+            const grossMinutes = rangeCorrMap.has(log.id)
               ? Math.max(0, rangeCorrMap.get(log.id) || 0)
               : (log.duration_minutes ? Math.max(0, log.duration_minutes) : 0);
+            const finalMinutes = Math.max(0, grossMinutes - lunchMins);
             weekTotal += finalMinutes;
 
             rows.push([
