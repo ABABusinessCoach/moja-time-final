@@ -1,0 +1,25 @@
+name,email,phone,pin_hash,is_active,employee_number,created_at
+ABA,hereforyou@ababusinesscoach.com,,$2a$10$K97MxuCpqKCEu7r5VCjmW.nHpFKAYvMTCO9dR10Mjjs0vTaYr1Foa,false,,2026-06-01 16:24:22
+Alexis,alexislandry153@gmail.com,9784272547,$2a$10$OufNmtOlz7yOZqz3pQrEGOdeUNJvkbsgoSg3wjMohxlv2CTlq753m,true,,2026-07-20 11:33:15
+Ava DeAngelo,avadeangelo193@gmail.com,6035532779,$2a$10$Marpt5u0GkuiBE/42a09Z.bY0bRZpukLXAmmAKnjqjFtIAjs729Qy,true,015,2026-07-06 18:06:46
+Briana Eden,briana.eden16@gmail.com,,$2a$10$vFdOx7V4DxX4DKIkSbX9IOhAm2opPIf1YtKaHogNgdh6b6ZmDl10G,true,013,2026-07-06 14:53:01
+Chloe Craig,chloecheviot@gmail.com,6038314437,$2a$10$9VeH8JYZaKc2oUOoIX9N6eelMyuNaE6Zy.85j8Btham45pfl9SY8a,true,003,2026-06-05 07:24:18
+Cole Heinselman,cheinselman2017@gmail.com,6035624412,$2a$10$hnksdaqefJ1wywPel0CgfuMOZ71Sp9i5nupYHedxijJq9YAzjkgzK,true,005,2026-06-05 13:36:36
+EJ Alvin Catan,exec.assist@ababusinesscoach.com,,$2a$10$rQZnh7fihWRCOjlNgtJYheuGF9vkL/1jX43bw.3aVkkZJtBa8GAGi,false,,2026-06-01 16:29:14
+Erin Kilanski,e.kilanski01@gmail.com,6038127041,$2a$10$Sf6I8R.z/3xSXri94hDe7exbHkBIHheoznbgYXpp.NfNXlBL0FBJi,true,008,2026-06-03 15:54:30
+Haley Hines,hhalg57@gmail.com,,$2a$10$2/tj.u.OMLAVdG6tqJ9fqeAZn6621Q1cyfWZoqO5e07c6Eb9uI/1i,false,006,2026-06-03 19:14:05
+Jennifer Campbell,nh.2959knh@gmail.com,6035678415,$2a$10$yKPVb1htPibdlHX5Gjtb7u0z/DjK.ea7mXs2hXtVaOkETAH3rS/K2,true,002,2026-06-24 07:59:35
+Katherine Wadleigh-White,katherine.wadleigh@gmail.com,6038011645,$2a$10$pPEwYrZYxCPqkq8UEsDc4es8hDzKlloWkuB70ejLDw3gqPLYPzVYS,true,010,2026-06-02 16:16:15
+Moja Admin,hello@mojakids.com,,$2a$10$aHR1ZQNkwljCiioJv7/Elew..xFoswA9RKLr/S87fqOUu4RGJBLMm,true,,2026-06-01 16:28:06
+New,vanessamabunga27@gmail.com,,$2a$10$I3Mbttem5rONwM.QtqLuK.EssVxk2ZZRbA4jEcF0rlFmTH8jB8F76,true,,2026-07-13 16:29:13
+Nick Stevens,Nickpaulstevens@gmail.com,2253370997,$2a$10$k9QLe2JMoV4tpOlQ1//GQuAWtxGshkU7ZaRlMw7jSmPGQ6gbs4aZK,true,009,2026-06-04 07:49:29
+Phoenix Karleskint,pck.karleskint@gmail.com,6035583521,$2a$10$QYPPNGPE5dIpxSWfcGCQZuhE/QmQP2CfufT.t31pdLobDCB/zScAK,true,020,2026-06-24 18:12:22
+Rachael F Visconti,Rachael_visconti@yahoo.com,4133744045,$2a$10$xpeIEgAae52XNeIRtQKnMeOqB2AKi0W6p8hUGdO19UuwZN2h7osUm,true,,2026-07-21 02:39:25
+Rebecca Jones,rt21698@gmail.com,,$2a$10$gETE9zKGsxVznFJZPVz31.osc/VOuxJk8d0ses9gz/3ywC6OZ/.Im,true,007,2026-06-07 08:11:15
+Rebecca Wolfson,rwolfson86@gmail.com,6469372255,$2a$10$a/jleS4bLFGjzf47DVq4luSAM/Bdf0t4C1N8DpT1HIJjp0DUrs9.S,true,011,2026-06-08 11:02:26
+Samantha Barnes,barnesfam1183@gmail.com,6038031073,$2a$10$tlJDHsmAyiDOCEecCtgkjOv713eXTpeBq5kVO8JP/GVfjw5kj3p.G,true,012,2026-06-24 11:54:34
+Samantha Stewart,samistewart09@hotmail.com,6037622498,$2a$10$ynt73KnLnanp9aogxrS0lOnruF.Tf.PIyY5obOrt92kEEClBqRZQy,true,016,2026-07-01 08:24:40
+Spencer Zamboni,milesmarie28@outlook.com,6039331688,$2a$10$YeQwLCFAr5s7YJvrn7Cs.O2YHNK7PbpNOzagbaGQlfihQyx2e.mau,true,019,2026-07-06 20:27:54
+Test,vanessa@ababusinesscoach.com,,$2a$10$orxCeqyFOiVYlRiynjc6FOGsZbp1BBaYdmf/C1Nur4fTNC7n9Av3K,false,,2026-05-30 15:58:19
+Yan Li,yan384068@gmail.com,,$2a$10$gGS9c.Qf3YwilAfCSV4Z8eN2FdPjeqJAAGEkcG.B357.AcZsdMIW2,true,018,2026-07-06 15:05:07
+Zoey Ash,zoeyash60@gmail.com,6033137611,$2a$10$UQVXCf.7GxnPfTCJjfSfK.Qj6/wG8I4UtTvmmyKQpfpllpzDnI7Tm,true,,2026-07-14 10:03:19

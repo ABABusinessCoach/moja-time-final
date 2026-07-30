@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Employee Timecard SOP - Moja Behavioral Services</title>
+  <style>
+    @page { margin: 0.75in; size: letter; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      color: #1a1a2e;
+      line-height: 1.6;
+      padding: 48px;
+      max-width: 8.5in;
+      margin: 0 auto;
+    }
+    h1 { font-size: 24px; color: #355574; margin-bottom: 4px; }
+    h2 { font-size: 18px; color: #355574; margin: 32px 0 12px; border-bottom: 2px solid #e66d38; padding-bottom: 6px; }
+    h3 { font-size: 14px; color: #e66d38; margin: 20px 0 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+    p, li { font-size: 13px; }
+    .subtitle { font-size: 14px; color: #666; margin-bottom: 24px; }
+    .header-bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+    .logo-text { font-size: 11px; color: #e66d38; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; }
+    ul, ol { padding-left: 20px; margin: 8px 0; }
+    li { margin-bottom: 6px; }
+    .callout {
+      background: #fff7ed;
+      border-left: 4px solid #e66d38;
+      padding: 12px 16px;
+      margin: 16px 0;
+      border-radius: 0 6px 6px 0;
+      font-size: 12px;
+    }
+    .callout-blue {
+      background: #eff6ff;
+      border-left: 4px solid #355574;
+      padding: 12px 16px;
+      margin: 16px 0;
+      border-radius: 0 6px 6px 0;
+      font-size: 12px;
+    }
+    .callout-green {
+      background: #f0fdf4;
+      border-left: 4px solid #16a34a;
+      padding: 12px 16px;
+      margin: 16px 0;
+      border-radius: 0 6px 6px 0;
+      font-size: 12px;
+    }
+    .step-card {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 16px 20px;
+      margin: 16px 0;
+    }
+    .step-number {
+      display: inline-block;
+      width: 28px;
+      height: 28px;
+      line-height: 28px;
+      text-align: center;
+      background: #355574;
+      color: white;
+      border-radius: 50%;
+      font-size: 13px;
+      font-weight: 700;
+      margin-right: 10px;
+      vertical-align: middle;
+    }
+    .step-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: #355574;
+      vertical-align: middle;
+    }
+    .step-body { margin-top: 10px; padding-left: 38px; }
+    .step-body p { margin-bottom: 8px; }
+    .status-table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 12px; }
+    .status-table th { background: #355574; color: white; padding: 8px 12px; text-align: left; }
+    .status-table td { padding: 8px 12px; border-bottom: 1px solid #e2e8f0; }
+    .status-table tr:nth-child(even) td { background: #f8fafc; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 700; }
+    .badge-pending { background: #fef3c7; color: #92400e; }
+    .badge-approved { background: #d1fae5; color: #065f46; }
+    .badge-rejected { background: #fee2e2; color: #991b1b; }
+    .flow-diagram {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 20px;
+      margin: 16px 0;
+      text-align: center;
+    }
+    .flow-step {
+      display: inline-block;
+      background: white;
+      border: 2px solid #355574;
+      border-radius: 8px;
+      padding: 8px 14px;
+      font-size: 11px;
+      font-weight: 600;
+      color: #355574;
+      margin: 4px;
+      vertical-align: middle;
+    }
+    .flow-step.active { background: #355574; color: white; }
+    .flow-step.success { background: #16a34a; border-color: #16a34a; color: white; }
+    .flow-step.warning { background: #f59e0b; border-color: #f59e0b; color: white; }
+    .flow-arrow { display: inline-block; font-size: 18px; color: #94a3b8; margin: 0 4px; vertical-align: middle; }
+    .screenshot-placeholder {
+      background: #f1f5f9;
+      border: 2px dashed #cbd5e1;
+      border-radius: 8px;
+      padding: 24px;
+      text-align: center;
+      color: #64748b;
+      font-size: 12px;
+      font-style: italic;
+      margin: 12px 0;
+    }
+    .page-break { page-break-before: always; }
+    @media print {
+      body { padding: 0; }
+      .no-print { display: none; }
+    }
+    @media (max-width: 600px) {
+      body { padding: 20px; }
+      .header-bar { flex-direction: column; align-items: flex-start; gap: 4px; }
+      .flow-step { font-size: 10px; padding: 6px 10px; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="header-bar">
+  <div>
+    <h1>How to Review &amp; Update Your Timecard</h1>
+    <p class="subtitle">Employee Standard Operating Procedure - Moja Behavioral Services</p>
+  </div>
+  <div class="logo-text">Employee Guide</div>
+</div>
+
+<!-- OVERVIEW -->
+<div class="flow-diagram">
+  <span class="flow-step active">Receive Email</span>
+  <span class="flow-arrow">&rarr;</span>
+  <span class="flow-step">Enter PIN</span>
+  <span class="flow-arrow">&rarr;</span>
+  <span class="flow-step">Review Hours</span>
+  <span class="flow-arrow">&rarr;</span>
+  <span class="flow-step warning">Add Notes or Questions</span>
+  <span class="flow-arrow">&rarr;</span>
+  <span class="flow-step success">Approve</span>
+</div>
+
+<div class="callout">
+  <strong>Deadline:</strong> You must review your timecard by <strong>8:00 PM EST</strong> on the day you receive the email. If you do not respond and have no pending corrections, your timecard will be auto-approved as-is.
+</div>
+
+<!-- STEP 1 -->
+<h2>Step-by-Step Instructions</h2>
+
+<div class="step-card">
+  <span class="step-number">1</span>
+  <span class="step-title">Open the Timecard Link from Your Email</span>
+  <div class="step-body">
+    <p>You will receive an email with the subject <strong>"Your Timecard is Ready for Review"</strong> at the end of each pay period (every other Friday).</p>
+    <p>Click the <strong>"Review My Timecard"</strong> button in the email. This will open the timecard review page in your browser.</p>
+  </div>
+</div>
+
+<div class="step-card">
+  <span class="step-number">2</span>
+  <span class="step-title">Enter Your 4-Digit PIN</span>
+  <div class="step-body">
+    <p>You will be asked to enter your <strong>4-digit PIN</strong> -- the same one you use to clock in and out each day.</p>
+    <p>Type your PIN into the boxes. The system will verify it automatically after you enter the 4th digit.</p>
+  </div>
+</div>
+
+<div class="callout-blue">
+  <strong>Forgot your PIN?</strong> Contact your manager to have it reset. Do not share your PIN with other employees.
+</div>
+
+<div class="step-card">
+  <span class="step-number">3</span>
+  <span class="step-title">Review Your Timecard</span>
+  <div class="step-body">
+    <p>You will see a table showing your full 2-week pay period with:</p>
+    <ul>
+      <li><strong>Each day's shift</strong> -- clock-in time, clock-out time</li>
+      <li><strong>Breaks</strong> -- duration of each</li>
+      <li><strong>Regular hours</strong> (Reg column)</li>
+      <li><strong>Overtime hours</strong> (OT column) -- anything over 40 hours per week</li>
+      <li><strong>Weekly and pay period totals</strong> at the bottom</li>
+    </ul>
+    <p>Look at each day carefully. Make sure the clock-in and clock-out times match when you actually arrived and left.</p>
+  </div>
+</div>
+
+<!-- DECISION POINT -->
+<h2>If Your Hours Are Correct</h2>
+
+<div class="step-card">
+  <span class="step-number">4a</span>
+  <span class="step-title">Tap "Approve" to Confirm</span>
+  <div class="step-body">
+    <p>If everything looks correct, scroll to the bottom and tap the green <strong>"Approve"</strong> button.</p>
+    <p>That's it! Your timecard is confirmed and will be sent to your manager for final sign-off.</p>
+  </div>
+</div>
+
+<div class="callout-green">
+  <strong>All done!</strong> If your hours are correct, the whole process takes less than 1 minute. Just verify and approve.
+</div>
+
+<div class="page-break"></div>
+
+<!-- IF HOURS ARE WRONG -->
+<h2>If Your Hours Need a Correction</h2>
+
+<div class="step-card">
+  <span class="step-number">4b</span>
+  <span class="step-title">Tap "Add Notes or Questions"</span>
+  <div class="step-body">
+    <p>If something looks wrong, tap the orange <strong>"Add Notes or Questions"</strong> button at the bottom of your timecard. A pop-up window will appear where you can flag the issue and propose a correction.</p>
+    <p>You will have two options for how to correct the shift:</p>
+
+    <table class="status-table" style="margin-top: 12px;">
+      <tr>
+        <th>Option</th>
+        <th>When to Use</th>
+        <th>What You Enter</th>
+      </tr>
+      <tr>
+        <td><strong>Override Hours</strong></td>
+        <td>You know the total hours you worked that day</td>
+        <td>Hours and minutes (e.g., <strong>8:30</strong> for 8 hours 30 minutes)</td>
+      </tr>
+      <tr>
+        <td><strong>Edit Times</strong></td>
+        <td>You know the correct clock-in and/or clock-out time</td>
+        <td>The corrected start and end times</td>
+      </tr>
+    </table>
+  </div>
+</div>
+
+<div class="step-card">
+  <span class="step-number">5</span>
+  <span class="step-title">Enter the Correct Information</span>
+  <div class="step-body">
+    <p><strong>If using "Override Hours":</strong> Type the total hours and minutes you worked in <strong>H:MM</strong> format.</p>
+    <ul>
+      <li>8 hours = <strong>8:00</strong></li>
+      <li>8 hours 15 min = <strong>8:15</strong></li>
+      <li>8 hours 30 min = <strong>8:30</strong></li>
+      <li>8 hours 45 min = <strong>8:45</strong></li>
+    </ul>
+    <p><strong>If using "Edit Times":</strong> Select the correct clock-in and clock-out times from the time pickers.</p>
+  </div>
+</div>
+
+<div class="step-card">
+  <span class="step-number">6</span>
+  <span class="step-title">Provide a Reason (Required)</span>
+  <div class="step-body">
+    <p>In the <strong>"Reason for edit"</strong> text box, briefly explain why the correction is needed. Be specific so your manager can approve quickly.</p>
+    <h3 style="margin-top: 12px;">Good examples:</h3>
+    <ul>
+      <li>"Forgot to clock out, actually left at 5:00 PM"</li>
+      <li>"Clock-in didn't register, arrived at 7:00 AM (verified with manager)"</li>
+      <li>"System showed wrong time -- was here until 4:30, not 3:30"</li>
+      <li>"Worked through break, did not take 15-min break"</li>
+    </ul>
+  </div>
+</div>
+
+<div class="step-card">
+  <span class="step-number">7</span>
+  <span class="step-title">Tap "Submit for Approval"</span>
+  <div class="step-body">
+    <p>Click the blue <strong>"Submit for Approval"</strong> button. Your correction request is now sent to your manager.</p>
+    <p>You will see a yellow <span class="badge badge-pending">Pending</span> badge appear on that shift. This means your request is waiting for manager approval.</p>
+  </div>
+</div>
+
+<div class="step-card">
+  <span class="step-number">8</span>
+  <span class="step-title">Wait for Manager Decision, Then Approve</span>
+  <div class="step-body">
+    <p>Your manager will review and either approve or reject your correction:</p>
+    <ul>
+      <li><span class="badge badge-approved">Approved</span> -- Your hours are updated. The corrected time is now reflected in your total.</li>
+      <li><span class="badge badge-rejected">Rejected</span> -- The original hours remain. You'll see the manager's reason. You may submit a new correction if needed.</li>
+    </ul>
+    <p>Once all your corrections are resolved, return to the timecard and tap <strong>"Approve"</strong> to finalize.</p>
+  </div>
+</div>
+
+<!-- FAQ -->
+<div class="page-break"></div>
+
+<h2>Frequently Asked Questions</h2>
+
+<h3>What if I miss the 8 PM deadline?</h3>
+<p>If you haven't added any notes or corrections, your timecard will auto-approve with the hours as shown. If you notice an error after this, contact your manager directly -- they can still make edits on their end.</p>
+
+<h3>Can I correct more than one day?</h3>
+<p>Yes. Click on each shift that needs fixing and submit a correction for each one individually. You can have multiple pending corrections at the same time.</p>
+
+<h3>Can I change my correction after submitting?</h3>
+<p>Yes, as long as your manager hasn't reviewed it yet. You can withdraw a pending correction and submit a new one.</p>
+
+<h3>What counts as overtime?</h3>
+<p>Any hours over <strong>40 in a single work week</strong> (Saturday through Friday) are counted as overtime. The system calculates this automatically per week, not per pay period.</p>
+
+<h3>Are breaks deducted from my hours?</h3>
+<p>No. All breaks are <strong>paid</strong> and are included in your total hours. You do not need to worry about break time being subtracted from your paycheck.</p>
+
+<h3>I see a shift I don't recognize. What do I do?</h3>
+<p>Click on that shift and submit a correction with a note explaining you did not work that time. Your manager will investigate and correct it.</p>
+
+<!-- QUICK REFERENCE -->
+<h2>Quick Reference</h2>
+
+<div class="flow-diagram" style="text-align: left; padding: 20px 24px;">
+  <table style="width: 100%; font-size: 12px; border: none;">
+    <tr>
+      <td style="padding: 6px 0; font-weight: 700; color: #355574; width: 140px;">Pay Period:</td>
+      <td style="padding: 6px 0;">Every 2 weeks, Saturday through Friday</td>
+    </tr>
+    <tr>
+      <td style="padding: 6px 0; font-weight: 700; color: #355574;">Timecards Sent:</td>
+      <td style="padding: 6px 0;">Last Friday of each pay period at 3:00 PM</td>
+    </tr>
+    <tr>
+      <td style="padding: 6px 0; font-weight: 700; color: #355574;">Your Deadline:</td>
+      <td style="padding: 6px 0;">8:00 PM EST the same day</td>
+    </tr>
+    <tr>
+      <td style="padding: 6px 0; font-weight: 700; color: #355574;">Access Method:</td>
+      <td style="padding: 6px 0;">Email link + your 4-digit clock PIN</td>
+    </tr>
+    <tr>
+      <td style="padding: 6px 0; font-weight: 700; color: #355574;">Overtime Rule:</td>
+      <td style="padding: 6px 0;">Over 40 hours per week = overtime</td>
+    </tr>
+    <tr>
+      <td style="padding: 6px 0; font-weight: 700; color: #355574;">Need Help:</td>
+      <td style="padding: 6px 0;">Contact your manager or admin</td>
+    </tr>
+  </table>
+</div>
+
+<!-- FOOTER -->
+<div style="margin-top: 48px; padding-top: 16px; border-top: 1px solid #e2e8f0; font-size: 11px; color: #94a3b8; text-align: center;">
+  Moja Behavioral Services - Employee Timecard Review SOP<br>
+  Last Updated: July 2026 | For internal use only
+</div>
+
+</body>
+</html>

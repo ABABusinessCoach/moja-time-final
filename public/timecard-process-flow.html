@@ -2,387 +2,367 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Timecard Process Flow - Moja Behavioral Services</title>
+  <title>Moja Time Clock &amp; Approval Process Flow</title>
   <style>
-    @page { margin: 0.75in; size: letter; }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+    @page {
+      margin: 0.75in;
+      size: letter;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      color: #1a1a2e;
-      line-height: 1.6;
-      padding: 48px;
-      max-width: 8.5in;
-      margin: 0 auto;
+      font-size: 11pt;
+      line-height: 1.5;
+      color: #1a1a1a;
+      padding: 0.75in;
     }
-    h1 { font-size: 24px; color: #355574; margin-bottom: 4px; }
-    h2 { font-size: 18px; color: #355574; margin: 32px 0 12px; border-bottom: 2px solid #e66d38; padding-bottom: 6px; }
-    h3 { font-size: 14px; color: #e66d38; margin: 20px 0 8px; text-transform: uppercase; letter-spacing: 0.5px; }
-    p, li { font-size: 13px; }
-    .subtitle { font-size: 14px; color: #666; margin-bottom: 24px; }
-    .flow-diagram {
+    h1 {
+      font-size: 20pt;
+      font-weight: 700;
+      margin-bottom: 4pt;
+      color: #111;
+    }
+    .subtitle {
+      font-size: 10pt;
+      color: #666;
+      margin-bottom: 24pt;
+      border-bottom: 2px solid #111;
+      padding-bottom: 8pt;
+    }
+    h2 {
+      font-size: 14pt;
+      font-weight: 700;
+      margin-top: 20pt;
+      margin-bottom: 8pt;
+      color: #111;
+      border-left: 4px solid #2563eb;
+      padding-left: 8pt;
+    }
+    h3 {
+      font-size: 11pt;
+      font-weight: 700;
+      margin-top: 14pt;
+      margin-bottom: 6pt;
+      color: #333;
+    }
+    p, li {
+      margin-bottom: 4pt;
+    }
+    ul, ol {
+      padding-left: 20pt;
+      margin-bottom: 10pt;
+    }
+    .flow-box {
       background: #f8fafc;
       border: 1px solid #e2e8f0;
-      border-radius: 8px;
-      padding: 20px;
-      margin: 16px 0;
-      text-align: center;
+      border-radius: 6px;
+      padding: 12pt 16pt;
+      margin: 10pt 0;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 9.5pt;
+      line-height: 1.6;
+      white-space: pre;
+      page-break-inside: avoid;
     }
-    .flow-step {
-      display: inline-block;
-      background: white;
-      border: 2px solid #355574;
-      border-radius: 8px;
-      padding: 8px 14px;
-      font-size: 11px;
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 10pt 0;
+      font-size: 10pt;
+      page-break-inside: avoid;
+    }
+    th, td {
+      border: 1px solid #d1d5db;
+      padding: 6pt 10pt;
+      text-align: left;
+    }
+    th {
+      background: #f1f5f9;
       font-weight: 600;
-      color: #355574;
-      margin: 4px;
-      vertical-align: middle;
     }
-    .flow-step.active { background: #355574; color: white; }
-    .flow-step.success { background: #16a34a; border-color: #16a34a; color: white; }
-    .flow-step.warning { background: #f59e0b; border-color: #f59e0b; color: white; }
-    .flow-arrow { display: inline-block; font-size: 18px; color: #94a3b8; margin: 0 4px; vertical-align: middle; }
-    .status-table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 12px; }
-    .status-table th { background: #355574; color: white; padding: 8px 12px; text-align: left; }
-    .status-table td { padding: 8px 12px; border-bottom: 1px solid #e2e8f0; }
-    .status-table tr:nth-child(even) td { background: #f8fafc; }
-    .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 700; }
-    .badge-pending { background: #dbeafe; color: #1d4ed8; }
-    .badge-notes { background: #fef3c7; color: #92400e; }
-    .badge-emp { background: #d1fae5; color: #065f46; }
-    .badge-approved { background: #16a34a; color: white; }
-    .section { margin-bottom: 24px; }
-    ul { padding-left: 20px; margin: 8px 0; }
-    li { margin-bottom: 4px; }
-    .callout {
-      background: #fff7ed;
-      border-left: 4px solid #e66d38;
-      padding: 12px 16px;
-      margin: 12px 0;
-      border-radius: 0 6px 6px 0;
-      font-size: 12px;
+    tr:nth-child(even) { background: #f9fafb; }
+    .badge {
+      display: inline-block;
+      padding: 1pt 6pt;
+      border-radius: 3pt;
+      font-size: 8.5pt;
+      font-weight: 600;
+      text-transform: uppercase;
     }
-    .callout-blue {
-      background: #eff6ff;
-      border-left: 4px solid #355574;
-      padding: 12px 16px;
-      margin: 12px 0;
-      border-radius: 0 6px 6px 0;
-      font-size: 12px;
-    }
-    .two-col { display: flex; gap: 24px; margin: 12px 0; }
-    .two-col > div { flex: 1; }
+    .badge-blue { background: #dbeafe; color: #1e40af; }
+    .badge-green { background: #dcfce7; color: #166534; }
+    .badge-amber { background: #fef3c7; color: #92400e; }
+    .badge-red { background: #fee2e2; color: #991b1b; }
+    .section { page-break-inside: avoid; }
     .page-break { page-break-before: always; }
-    .header-bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
-    .logo-text { font-size: 11px; color: #e66d38; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; }
-    .timeline { position: relative; padding-left: 24px; margin: 16px 0; }
-    .timeline::before { content: ''; position: absolute; left: 8px; top: 0; bottom: 0; width: 2px; background: #cbd5e1; }
-    .timeline-item { position: relative; margin-bottom: 16px; }
-    .timeline-item::before {
-      content: '';
-      position: absolute;
-      left: -20px;
-      top: 6px;
-      width: 12px;
-      height: 12px;
-      border-radius: 50%;
-      background: #355574;
-      border: 2px solid white;
-      box-shadow: 0 0 0 2px #355574;
+    .note {
+      background: #fffbeb;
+      border-left: 3px solid #f59e0b;
+      padding: 8pt 12pt;
+      margin: 10pt 0;
+      font-size: 10pt;
     }
-    .timeline-item.orange::before { background: #e66d38; box-shadow: 0 0 0 2px #e66d38; }
-    .timeline-item.green::before { background: #16a34a; box-shadow: 0 0 0 2px #16a34a; }
-    .tl-title { font-weight: 700; font-size: 13px; color: #1a1a2e; }
-    .tl-desc { font-size: 12px; color: #4b5563; margin-top: 2px; }
+    .key-points {
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      border-radius: 6px;
+      padding: 12pt 16pt;
+      margin: 10pt 0;
+    }
+    .key-points li {
+      margin-bottom: 3pt;
+    }
     @media print {
       body { padding: 0; }
       .no-print { display: none; }
     }
+    .print-btn {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: #2563eb;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 6px;
+      font-size: 12pt;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    .print-btn:hover { background: #1d4ed8; }
   </style>
 </head>
 <body>
+  <button class="print-btn no-print" onclick="window.print()">Save as PDF</button>
 
-<div class="header-bar">
-  <div>
-    <h1>Timecard Process Flow</h1>
-    <p class="subtitle">Moja Behavioral Services - Time Tracking System</p>
+  <h1>Moja Time Clock &amp; Approval Process</h1>
+  <div class="subtitle">Standard Operating Procedure &mdash; High-Level Overview &amp; Process Flow</div>
+
+  <!-- SECTION 1 -->
+  <div class="section">
+    <h2>1. System Overview</h2>
+    <p>The Moja time tracking system is a <strong>PIN-based kiosk time clock</strong> with bi-weekly timecard generation and a two-tier approval workflow (employee review, then admin approval).</p>
+
+    <div class="key-points">
+      <h3>Key Design Principles</h3>
+      <ul>
+        <li><strong>No employee login required</strong> &mdash; staff use 4-digit PINs to clock in/out; timecard review uses emailed token links</li>
+        <li><strong>Bi-weekly pay periods</strong> &mdash; Saturday through Friday (two-week cycles)</li>
+        <li><strong>Two break types</strong> &mdash; "Break" (paid, not deducted) and "Lunch" (unpaid, deducted from total hours)</li>
+        <li><strong>Auto clock-out</strong> &mdash; shifts exceeding 16 hours are automatically closed</li>
+        <li><strong>Rate limiting</strong> &mdash; 5 failed PIN attempts per IP address per 15 minutes</li>
+        <li><strong>Overtime</strong> &mdash; calculated per week at 40-hour threshold (configurable)</li>
+      </ul>
+    </div>
   </div>
-  <div class="logo-text">Internal Process Document</div>
-</div>
 
-<!-- OVERVIEW DIAGRAM -->
-<div class="flow-diagram">
-  <span class="flow-step active">Generate Timecards</span>
-  <span class="flow-arrow">&rarr;</span>
-  <span class="flow-step">Employee Review</span>
-  <span class="flow-arrow">&rarr;</span>
-  <span class="flow-step warning">Notes &amp; Corrections</span>
-  <span class="flow-arrow">&rarr;</span>
-  <span class="flow-step">Admin Review</span>
-  <span class="flow-arrow">&rarr;</span>
-  <span class="flow-step success">Final Approval + Email</span>
-</div>
+  <!-- SECTION 2 -->
+  <div class="section">
+    <h2>2. Daily Clock In/Out Process</h2>
 
-<!-- STAGE 1 -->
-<h2>Stage 1: Timecard Generation</h2>
+    <h3>Steps:</h3>
+    <ol>
+      <li>Employee approaches the kiosk and enters their <strong>4-digit PIN</strong></li>
+      <li>System validates PIN (bcrypt comparison) and displays employee name and status</li>
+      <li>Employee taps <strong>Clock In</strong>, <strong>Clock Out</strong>, or <strong>Break</strong> as appropriate</li>
+      <li>Screen auto-resets after 45 seconds of inactivity</li>
+    </ol>
 
-<div class="two-col">
-  <div>
-    <h3>Triggers</h3>
+    <div class="flow-box">Employee enters PIN
+       &#x2502;
+  PIN validated via edge function (bcrypt)
+       &#x2502;
+  &#x250C;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x252C;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x252C;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2510;
+       &#x2502;                 &#x2502;                   &#x2502;
+  [CLOCK IN]         [BREAK]             [CLOCK OUT]
+       &#x2502;                 &#x2502;                   &#x2502;
+  New shift record   Break log created   Shift closed with
+  created            (paid or lunch)     duration calculated
+       &#x2502;                 &#x2502;                   &#x2502;
+  Staff marked       Staff marked        Staff marked
+  "clocked in"       "on break"          "clocked out"</div>
+
+    <h3>Automatic Safeguards:</h3>
+    <table>
+      <tr><th>Scenario</th><th>System Behavior</th></tr>
+      <tr><td>Employee clocks out while on break</td><td>Break is auto-ended, then shift closes</td></tr>
+      <tr><td>Shift exceeds 16 hours</td><td>Auto clock-out triggered; duration capped</td></tr>
+      <tr><td>Employee clocks in with stale open shift</td><td>Stale shift auto-closed, new shift begins</td></tr>
+      <tr><td>5+ failed PIN attempts from same IP</td><td>Blocked for 15 minutes</td></tr>
+    </table>
+  </div>
+
+  <!-- SECTION 3 -->
+  <div class="section">
+    <h2>3. Break Handling</h2>
+    <table>
+      <tr><th>Break Type</th><th>Paid?</th><th>Deducted from Hours?</th><th>Typical Duration</th></tr>
+      <tr><td><span class="badge badge-green">Break</span> (Regular)</td><td>Yes</td><td>No</td><td>15 minutes</td></tr>
+      <tr><td><span class="badge badge-amber">Lunch</span></td><td>No</td><td>Yes</td><td>30 minutes</td></tr>
+    </table>
+    <div class="note"><strong>Note:</strong> Only lunch breaks reduce an employee's total paid hours. Regular (paid) breaks are tracked but do not affect the timecard total.</div>
+  </div>
+
+  <!-- SECTION 4 -->
+  <div class="page-break section">
+    <h2>4. Timecard Generation</h2>
+
+    <h3>When:</h3>
     <ul>
-      <li><strong>Automatic (Cron):</strong> Runs every other Friday at 3:00 PM EST on the last day of the pay period</li>
-      <li><strong>Manual:</strong> Admin clicks "Send Manual Timecards" from the admin panel at any time</li>
+      <li><strong>Automatically</strong> &mdash; Friday evening via scheduled cron job</li>
+      <li><strong>Manually</strong> &mdash; Admin can trigger generation at any time</li>
     </ul>
+
+    <h3>What Happens:</h3>
+    <ol>
+      <li>Pay period is created or located (Saturday&ndash;Friday, bi-weekly)</li>
+      <li>For each active employee:
+        <ul>
+          <li>All shift durations in the period are summed (gross minutes)</li>
+          <li>Lunch break minutes are deducted</li>
+          <li>Overtime calculated per week (hours exceeding 40h threshold)</li>
+          <li>Timecard report created with status <span class="badge badge-blue">PENDING REVIEW</span></li>
+        </ul>
+      </li>
+      <li>Email sent to each employee with:
+        <ul>
+          <li>Total hours summary</li>
+          <li>Detailed shift table</li>
+          <li>Review link (token-based, no login needed)</li>
+          <li>Deadline: 8:00 PM EST Friday</li>
+        </ul>
+      </li>
+    </ol>
+
+    <div class="flow-box">Friday Evening (Cron or Manual Trigger)
+       &#x2502;
+  Sum all clock_logs for pay period per employee
+       &#x2502;
+  Deduct lunch break minutes
+       &#x2502;
+  Calculate weekly overtime (40h threshold)
+       &#x2502;
+  Generate timecard_reports (status: pending_review)
+       &#x2502;
+  Email employees with review link + deadline</div>
   </div>
-  <div>
-    <h3>Pay Period Structure</h3>
-    <ul>
-      <li><strong>Duration:</strong> Bi-weekly (14 days)</li>
-      <li><strong>Starts:</strong> Saturday</li>
-      <li><strong>Ends:</strong> Friday</li>
-      <li><strong>Overtime:</strong> Calculated per week (&gt;40h)</li>
-    </ul>
+
+  <!-- SECTION 5 -->
+  <div class="section">
+    <h2>5. Employee Review Phase</h2>
+    <p>Employees receive an email with a unique link to review their timecard. <strong>No login is required.</strong></p>
+
+    <table>
+      <tr><th>Employee Action</th><th>Result</th></tr>
+      <tr><td>Approve timecard</td><td>Status &rarr; <span class="badge badge-green">EMPLOYEE APPROVED</span></td></tr>
+      <tr><td>Add a note to a shift</td><td>Status &rarr; <span class="badge badge-amber">HAS NOTES</span></td></tr>
+      <tr><td>Submit a correction (new times/hours)</td><td>Correction created as "pending"; status &rarr; <span class="badge badge-amber">HAS NOTES</span></td></tr>
+      <tr><td>Add a missing shift</td><td>Creates pending correction for the day</td></tr>
+      <tr><td>No action by 8:00 PM Friday</td><td>Auto-approved &rarr; <span class="badge badge-green">EMPLOYEE APPROVED</span></td></tr>
+    </table>
   </div>
-</div>
 
-<h3>What the System Does</h3>
-<ul>
-  <li>Retrieves all active staff members</li>
-  <li>Pulls all clock logs for the 2-week pay period</li>
-  <li>Calculates gross hours per shift (clock in to clock out)</li>
-  <li>All breaks are <strong>paid</strong> and included in total hours</li>
-  <li>Calculates overtime: any hours exceeding 40 per week</li>
-  <li>Creates a timecard report record for each employee</li>
-  <li>Sends an email to each employee with their timecard summary and a review link</li>
-</ul>
+  <!-- SECTION 6 -->
+  <div class="section">
+    <h2>6. Admin Approval Phase</h2>
+    <p>After employee review, admins finalize timecards in the admin dashboard.</p>
 
-<div class="callout">
-  <strong>Deadline:</strong> Employees must review and respond by 8:00 PM EST on the day the timecard is sent. After this deadline, timecards without notes auto-approve.
-</div>
-
-<!-- STAGE 2 -->
-<h2>Stage 2: Employee Review</h2>
-
-<h3>How Employees Access</h3>
-<ul>
-  <li>Click the link in their email (token-based, no login required)</li>
-  <li>Or enter their 4-digit PIN on the "My Hours" page</li>
-</ul>
-
-<h3>Actions Available to Employees</h3>
-
-<table class="status-table">
-  <tr>
-    <th>Action</th>
-    <th>Description</th>
-    <th>Effect on Status</th>
-  </tr>
-  <tr>
-    <td><strong>View Timecard</strong></td>
-    <td>See full 2-week breakdown with daily shifts, breaks, regular/OT hours</td>
-    <td>No change</td>
-  </tr>
-  <tr>
-    <td><strong>Add Note</strong></td>
-    <td>Flag an issue on a specific shift or leave a general note</td>
-    <td>Changes to "Has Notes"</td>
-  </tr>
-  <tr>
-    <td><strong>Propose Correction</strong></td>
-    <td>Request a time change (new clock in/out) or override total hours for a shift</td>
-    <td>Changes to "Has Notes"</td>
-  </tr>
-  <tr>
-    <td><strong>Approve</strong></td>
-    <td>Confirm the timecard is accurate as-is</td>
-    <td>Changes to "Employee Approved"</td>
-  </tr>
-  <tr>
-    <td><strong>No Action (by 8 PM)</strong></td>
-    <td>If no notes/corrections exist, auto-approves at deadline</td>
-    <td>Auto-changes to "Employee Approved"</td>
-  </tr>
-</table>
-
-<div class="callout-blue">
-  <strong>Note:</strong> Employees can edit or delete their own notes and withdraw pending corrections before admin reviews them.
-</div>
-
-<!-- PAGE BREAK -->
-<div class="page-break"></div>
-
-<!-- STAGE 3 -->
-<h2>Stage 3: Admin Review &amp; Processing</h2>
-
-<h3>Admin Dashboard View</h3>
-<p>The admin sees two tabs: <strong>"Needs Review"</strong> (pending timecards) and <strong>"Approved"</strong> (finalized). Each card shows employee name, total hours, OT, shift count, and whether they are currently clocked in (live indicator).</p>
-
-<h3>Admin Actions</h3>
-
-<div class="timeline">
-  <div class="timeline-item">
-    <div class="tl-title">Respond to Employee Notes</div>
-    <div class="tl-desc">For each open note, admin can <strong>Resolve</strong> (with comment) or <strong>Dismiss</strong>. Once all notes are resolved, report progresses.</div>
+    <table>
+      <tr><th>Admin Action</th><th>Result</th></tr>
+      <tr><td>Resolve employee notes</td><td>If all resolved &rarr; status reverts to <span class="badge badge-blue">PENDING REVIEW</span></td></tr>
+      <tr><td>Approve employee correction</td><td>Hours recalculated with corrected times</td></tr>
+      <tr><td>Reject employee correction</td><td>Original times kept; rejection reason stored</td></tr>
+      <tr><td>Admin edits shift directly</td><td>Auto-approved correction; hours recalculated immediately</td></tr>
+      <tr><td>Admin adds missing shift</td><td>New shift created with auto-approved correction</td></tr>
+      <tr><td>Final approval</td><td>Status &rarr; <span class="badge badge-green">APPROVED</span>; "Hours Confirmed" email sent to employee</td></tr>
+    </table>
   </div>
-  <div class="timeline-item orange">
-    <div class="tl-title">Approve or Reject Correction Requests</div>
-    <div class="tl-desc"><strong>Approve:</strong> Applies the employee's proposed times and recalculates hours.<br><strong>Reject:</strong> Keeps original times; optionally provides a reason visible to employee.</div>
+
+  <!-- SECTION 7 -->
+  <div class="section">
+    <h2>7. Complete Status Lifecycle</h2>
+
+    <div class="flow-box">  &#x250C;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2510;
+  &#x2502; PENDING REVIEW  &#x2502;  (Generated, awaiting employee)
+  &#x2514;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x252C;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2518;
+        &#x2502;
+        &#x251C;&#x2500;&#x2500;&#x2500; Employee adds notes/corrections
+        &#x2502;         &#x2502;
+        &#x2502;   &#x250C;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2534;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2510;
+        &#x2502;   &#x2502;   HAS NOTES     &#x2502;  (Needs admin attention)
+        &#x2502;   &#x2514;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x252C;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2518;
+        &#x2502;          &#x2502;
+        &#x2502;          &#x251C;&#x2500;&#x2500;&#x2500; Admin resolves all notes
+        &#x2502;          &#x2502;         &#x2502;
+        &#x2502;          &#x2502;         &#x2514;&#x2500;&#x2500;&#x2500;&#x2192; Back to PENDING REVIEW
+        &#x2502;          &#x2502;
+        &#x251C;&#x2500;&#x2500;&#x2500; Employee approves (or auto-approve at 8PM)
+        &#x2502;
+  &#x250C;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2534;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2510;
+  &#x2502; EMPLOYEE APPROVED       &#x2502;  (Awaiting admin final sign-off)
+  &#x2514;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x252C;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2518;
+         &#x2502;
+         &#x251C;&#x2500;&#x2500;&#x2500; Admin approves
+         &#x2502;
+  &#x250C;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2534;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2510;
+  &#x2502; APPROVED                &#x2502;  (Final &#x2014; confirmation email sent)
+  &#x2514;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2518;</div>
   </div>
-  <div class="timeline-item">
-    <div class="tl-title">Direct Shift Override (Admin Edit)</div>
-    <div class="tl-desc">Admin can edit any shift regardless of status: modify clock in/out and break times. Changes take effect immediately and hours recalculate.</div>
+
+  <!-- SECTION 8 -->
+  <div class="section">
+    <h2>8. Correction Requests Flow</h2>
+
+    <h3>Employee-Initiated Corrections:</h3>
+    <ol>
+      <li>Employee opens timecard via emailed link</li>
+      <li>Clicks a shift and proposes changes (new in/out times or total hours)</li>
+      <li>System creates correction with status <span class="badge badge-amber">PENDING</span></li>
+      <li>Timecard status changes to "Has Notes" for admin visibility</li>
+      <li>Admin reviews and either <strong>approves</strong> (hours recalculated) or <strong>rejects</strong> (reason stored)</li>
+    </ol>
+
+    <h3>Admin-Initiated Corrections:</h3>
+    <ol>
+      <li>Admin edits shift directly from the review dashboard</li>
+      <li>Correction is created with status <span class="badge badge-green">APPROVED</span> immediately</li>
+      <li>Total hours are recalculated on the spot</li>
+    </ol>
+
+    <div class="note"><strong>Hours Recalculation Logic:</strong> For each shift, if an approved correction exists, its proposed duration is used instead of the original. Total lunch minutes are then deducted from the sum. Net hours = (sum of effective gross minutes - total lunch minutes) / 60.</div>
   </div>
-  <div class="timeline-item green">
-    <div class="tl-title">Final Approval</div>
-    <div class="tl-desc">Admin clicks "Approve &amp; Send Email" to finalize the timecard and send confirmed hours to employee.</div>
+
+  <!-- SECTION 9 -->
+  <div class="page-break section">
+    <h2>9. End-to-End Summary</h2>
+
+    <div class="flow-box">&#x250C;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2510;
+&#x2502;  DAILY: Employee clocks in/out via PIN kiosk       &#x2502;
+&#x2502;  &#x2022; Shifts and breaks recorded in real time          &#x2502;
+&#x2514;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x252C;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2518;
+                             &#x2502;
+                             &#x25BC;
+&#x250C;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2510;
+&#x2502;  BI-WEEKLY: Timecards generated (Friday)            &#x2502;
+&#x2502;  &#x2022; Hours summed, lunch deducted, overtime calc      &#x2502;
+&#x2502;  &#x2022; Emails sent to all employees                     &#x2502;
+&#x2514;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x252C;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2518;
+                             &#x2502;
+                             &#x25BC;
+&#x250C;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2510;
+&#x2502;  EMPLOYEE REVIEW (via email link, no login)         &#x2502;
+&#x2502;  &#x2022; Approve, add notes, or submit corrections       &#x2502;
+&#x2502;  &#x2022; Auto-approved at 8 PM if no action              &#x2502;
+&#x2514;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x252C;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2518;
+                             &#x2502;
+                             &#x25BC;
+&#x250C;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2510;
+&#x2502;  ADMIN APPROVAL                                     &#x2502;
+&#x2502;  &#x2022; Resolve notes, approve/reject corrections        &#x2502;
+&#x2502;  &#x2022; Make direct edits if needed                      &#x2502;
+&#x2502;  &#x2022; Final sign-off &#x2192; "Hours Confirmed" email sent  &#x2502;
+&#x2514;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2518;</div>
   </div>
-</div>
-
-<h3>Admin Edit Capabilities</h3>
-<table class="status-table">
-  <tr>
-    <th>Field</th>
-    <th>Can Edit?</th>
-    <th>Notes</th>
-  </tr>
-  <tr><td>Clock In Time</td><td>Yes</td><td>Immediately recalculates shift duration</td></tr>
-  <tr><td>Clock Out Time</td><td>Yes</td><td>Immediately recalculates shift duration</td></tr>
-  <tr><td>Break Out / Break In</td><td>Yes</td><td>Paid break - updates break record</td></tr>
-  <tr><td>Shift Note</td><td>Yes</td><td>Admin can add explanation for the edit</td></tr>
-</table>
-
-<div class="callout">
-  <strong>Important:</strong> Admin can edit timecards at any stage, including after employee approval or even after full admin approval. There are no restrictions on admin editing power.
-</div>
-
-<!-- STAGE 4 -->
-<h2>Stage 4: Final Approval &amp; Email</h2>
-
-<h3>What Happens When Admin Approves</h3>
-<ul>
-  <li>Report status changes to <strong>"Approved"</strong></li>
-  <li>Admin approval timestamp and admin ID are recorded</li>
-  <li>System builds final timecard with all approved corrections applied</li>
-  <li>A <strong>Final Hours Confirmation Email</strong> is sent to the employee containing:
-    <ul>
-      <li>Confirmation banner: "Your timecard has been approved!"</li>
-      <li>Final total hours (regular + overtime)</li>
-      <li>Full day-by-day breakdown with all corrections reflected</li>
-    </ul>
-  </li>
-</ul>
-
-<!-- STAGE 5 -->
-<h2>Stage 5: Post-Approval</h2>
-<ul>
-  <li>Employee can still view the finalized timecard (read-only)</li>
-  <li>Admin can still make edits if needed (e.g., payroll correction discovered later)</li>
-  <li>All changes are tracked in the audit log</li>
-</ul>
-
-<!-- PAGE BREAK -->
-<div class="page-break"></div>
-
-<!-- STATUS REFERENCE -->
-<h2>Status Reference</h2>
-
-<table class="status-table">
-  <tr>
-    <th>Status</th>
-    <th>Display</th>
-    <th>Meaning</th>
-    <th>Next Step</th>
-  </tr>
-  <tr>
-    <td><span class="badge badge-pending">pending_review</span></td>
-    <td>Pending</td>
-    <td>Timecard generated, awaiting employee response</td>
-    <td>Employee reviews by 8 PM or auto-approves</td>
-  </tr>
-  <tr>
-    <td><span class="badge badge-notes">has_notes</span></td>
-    <td>Has Notes</td>
-    <td>Employee added notes or proposed corrections</td>
-    <td>Admin must resolve notes and handle corrections</td>
-  </tr>
-  <tr>
-    <td><span class="badge badge-emp">employee_approved</span></td>
-    <td>Employee Approved</td>
-    <td>Employee confirmed hours are correct</td>
-    <td>Admin performs final review and approves</td>
-  </tr>
-  <tr>
-    <td><span class="badge badge-approved">approved</span></td>
-    <td>Fully Approved</td>
-    <td>Manager finalized, confirmation email sent</td>
-    <td>Complete - sent to payroll</td>
-  </tr>
-</table>
-
-<!-- HAPPY PATH -->
-<h2>Common Scenarios</h2>
-
-<h3>Scenario A: No Issues (Happy Path)</h3>
-<div class="flow-diagram">
-  <span class="flow-step active">Generated (Fri 3 PM)</span>
-  <span class="flow-arrow">&rarr;</span>
-  <span class="flow-step">Auto-Approve (8 PM)</span>
-  <span class="flow-arrow">&rarr;</span>
-  <span class="flow-step success">Admin Final Approve</span>
-</div>
-<p style="font-size:12px; color:#666; margin-top:8px;">Employee takes no action; timecard auto-approves at deadline. Admin reviews and clicks approve.</p>
-
-<h3>Scenario B: Employee Flags an Issue</h3>
-<div class="flow-diagram">
-  <span class="flow-step active">Generated</span>
-  <span class="flow-arrow">&rarr;</span>
-  <span class="flow-step warning">Employee Adds Note</span>
-  <span class="flow-arrow">&rarr;</span>
-  <span class="flow-step">Admin Resolves</span>
-  <span class="flow-arrow">&rarr;</span>
-  <span class="flow-step success">Admin Approves</span>
-</div>
-<p style="font-size:12px; color:#666; margin-top:8px;">Employee notices a discrepancy, adds a note. Admin reads and resolves it, then finalizes.</p>
-
-<h3>Scenario C: Employee Requests Time Correction</h3>
-<div class="flow-diagram">
-  <span class="flow-step active">Generated</span>
-  <span class="flow-arrow">&rarr;</span>
-  <span class="flow-step warning">Correction Proposed</span>
-  <span class="flow-arrow">&rarr;</span>
-  <span class="flow-step">Admin Approves/Rejects</span>
-  <span class="flow-arrow">&rarr;</span>
-  <span class="flow-step success">Final Approve</span>
-</div>
-<p style="font-size:12px; color:#666; margin-top:8px;">Employee proposes new clock in/out times for a shift. Admin evaluates and approves or rejects, then finalizes.</p>
-
-<h3>Scenario D: Admin Overrides Directly</h3>
-<div class="flow-diagram">
-  <span class="flow-step active">Any Status</span>
-  <span class="flow-arrow">&rarr;</span>
-  <span class="flow-step">Admin Edits Shift</span>
-  <span class="flow-arrow">&rarr;</span>
-  <span class="flow-step">Hours Recalculated</span>
-  <span class="flow-arrow">&rarr;</span>
-  <span class="flow-step success">Admin Approves</span>
-</div>
-<p style="font-size:12px; color:#666; margin-top:8px;">Admin proactively edits shift times without waiting for employee input. Can be done at any stage.</p>
-
-<!-- AUTO CLOCK-OUT -->
-<h2>Auto Clock-Out Protection</h2>
-<p>Shifts that exceed the configured maximum (default: <strong>16 hours</strong>) are automatically capped to prevent forgotten punches from inflating hours:</p>
-<ul>
-  <li><strong>At clock-in:</strong> If a stale shift is still open, it's auto-closed at the 16h mark before the new shift starts</li>
-  <li><strong>At clock-out:</strong> Duration is capped at 16h if elapsed time exceeds it</li>
-  <li><strong>Hourly cron:</strong> Proactively closes any shift open longer than 16h</li>
-</ul>
-
-<!-- FOOTER -->
-<div style="margin-top: 48px; padding-top: 16px; border-top: 1px solid #e2e8f0; font-size: 11px; color: #94a3b8; text-align: center;">
-  Moja Behavioral Services - Timecard Process Flow Documentation<br>
-  Generated July 2026 | For internal use only
-</div>
 
 </body>
 </html>

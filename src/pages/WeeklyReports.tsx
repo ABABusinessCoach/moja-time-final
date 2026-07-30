@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { callTimecardFunction } from '../lib/supabase';
-import { getPayPeriodForDate } from '../lib/payPeriod';
+import { getPayPeriodList } from '../lib/payPeriod';
 import { formatHM } from '../lib/formatTime';
 import { Download, CalendarRange, Loader2, X } from 'lucide-react';
 import type { Staff, ClockLog, BreakLog } from '../lib/types';
@@ -51,11 +51,6 @@ interface DayData {
   otMinutes: number;
 }
 
-function formatDate(dateStr: string): string {
-  const [y, m, d] = dateStr.split('-').map(Number);
-  return new Date(y, m - 1, d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-}
-
 function downloadBlob(csv: string, filename: string) {
   const blob = new Blob([csv], { type: 'text/csv' });
   const url = URL.createObjectURL(blob);
@@ -67,7 +62,9 @@ function downloadBlob(csv: string, filename: string) {
 }
 
 export function WeeklyReports() {
-  const [periodFilter, setPeriodFilter] = useState<'current' | 'previous'>('current');
+  const payPeriodOptions = getPayPeriodList();
+  const currentPPStart = payPeriodOptions.find(p => p.isCurrent)?.start || payPeriodOptions[0]?.start || '';
+  const [periodFilter, setPeriodFilter] = useState<string>(currentPPStart);
   const [employees, setEmployees] = useState<EmployeePeriodData[]>([]);
   const [loading, setLoading] = useState(true);
   const [grandTotal, setGrandTotal] = useState(0);
@@ -84,12 +81,7 @@ export function WeeklyReports() {
   const [staffList, setStaffList] = useState<Staff[]>([]);
   const [rangeExporting, setRangeExporting] = useState(false);
 
-  const currentPeriod = getPayPeriodForDate(new Date());
-  const prevDate = new Date();
-  prevDate.setDate(prevDate.getDate() - 14);
-  const previousPeriod = getPayPeriodForDate(prevDate);
-
-  const activePeriod = periodFilter === 'current' ? currentPeriod : previousPeriod;
+  const activePeriod = payPeriodOptions.find(p => p.start === periodFilter) || payPeriodOptions[0];
 
   useEffect(() => {
     loadPayrollData();
@@ -341,8 +333,6 @@ export function WeeklyReports() {
     }
   }
 
-  const currentPeriodLabel = `${formatDate(currentPeriod.start)} - ${formatDate(currentPeriod.end)}`;
-  const previousPeriodLabel = `${formatDate(previousPeriod.start)} - ${formatDate(previousPeriod.end)}`;
 
   return (
     <div className="space-y-5">
@@ -352,12 +342,13 @@ export function WeeklyReports() {
         <div className="flex items-center gap-3">
           <select
             value={periodFilter}
-            onChange={(e) => setPeriodFilter(e.target.value as 'current' | 'previous')}
+            onChange={(e) => setPeriodFilter(e.target.value)}
             className="h-9 px-3 pr-8 text-sm font-bold text-moja-blue bg-white border-2 border-moja-blue/20 rounded-lg focus:border-moja-blue focus:outline-none appearance-none cursor-pointer"
             style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%231B3A5C' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 8px center' }}
           >
-            <option value="current">Current ({currentPeriodLabel})</option>
-            <option value="previous">Previous ({previousPeriodLabel})</option>
+            {payPeriodOptions.map(pp => (
+              <option key={pp.start} value={pp.start}>{pp.label}</option>
+            ))}
           </select>
           <button
             onClick={() => setShowDateRange(!showDateRange)}
