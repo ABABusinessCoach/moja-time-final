@@ -5,10 +5,37 @@ import { Edit3, Plus, Trash2, X, History } from 'lucide-react';
 import { Toast } from '../components/Toast';
 import { formatHM } from '../lib/formatTime';
 
+function toESTLocal(isoStr: string): string {
+  const d = new Date(isoStr);
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hour12: false,
+  }).formatToParts(d);
+  const g = (t: string) => parts.find(p => p.type === t)?.value || '00';
+  return `${g('year')}-${g('month')}-${g('day')}T${g('hour')}:${g('minute')}`;
+}
+
+function fromESTLocal(localStr: string): string {
+  const [datePart, timePart] = localStr.split('T');
+  const [y, m, d] = datePart.split('-').map(Number);
+  const [hh, mm] = timePart.split(':').map(Number);
+  const utcGuess = new Date(Date.UTC(y, m - 1, d, hh, mm, 0));
+  const estParts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hour12: false,
+  }).formatToParts(utcGuess);
+  const g = (t: string) => Number(estParts.find(p => p.type === t)?.value || 0);
+  const estH = g('hour'), estM = g('minute'), estD = g('day');
+  const offsetMs = ((estH * 60 + estM) - (hh * 60 + mm)) * 60000 + (estD - d) * 86400000;
+  return new Date(utcGuess.getTime() - offsetMs).toISOString();
+}
+
 export function TimeLogs() {
   const [staffList, setStaffList] = useState<Staff[]>([]);
   const [logs, setLogs] = useState<(ClockLog & { staff: { name: string } })[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   // Modal state
@@ -44,8 +71,8 @@ export function TimeLogs() {
   function openEdit(log: ClockLog) {
     setEditLog(log);
     setEditForm({
-      clock_in_time: log.clock_in_time.slice(0, 16),
-      clock_out_time: log.clock_out_time?.slice(0, 16) || '',
+      clock_in_time: toESTLocal(log.clock_in_time),
+      clock_out_time: log.clock_out_time ? toESTLocal(log.clock_out_time) : '',
       reason: '',
     });
   }
@@ -70,8 +97,8 @@ export function TimeLogs() {
           },
           body: JSON.stringify({
             log_id: editLog.id,
-            clock_in_time: editForm.clock_in_time ? new Date(editForm.clock_in_time).toISOString() : undefined,
-            clock_out_time: editForm.clock_out_time ? new Date(editForm.clock_out_time).toISOString() : undefined,
+            clock_in_time: editForm.clock_in_time ? fromESTLocal(editForm.clock_in_time) : undefined,
+            clock_out_time: editForm.clock_out_time ? fromESTLocal(editForm.clock_out_time) : undefined,
             reason: editForm.reason,
           }),
         }
@@ -112,8 +139,8 @@ export function TimeLogs() {
           },
           body: JSON.stringify({
             staff_id: addForm.staff_id,
-            clock_in_time: new Date(addForm.clock_in_time).toISOString(),
-            clock_out_time: addForm.clock_out_time ? new Date(addForm.clock_out_time).toISOString() : null,
+            clock_in_time: fromESTLocal(addForm.clock_in_time),
+            clock_out_time: addForm.clock_out_time ? fromESTLocal(addForm.clock_out_time) : null,
             reason: addForm.reason,
           }),
         }

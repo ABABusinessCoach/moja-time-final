@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
-import { MessageSquare, CheckCircle, Clock, AlertTriangle, XCircle, RefreshCw, Radio, ChevronRight, ArrowLeft, Save, X, Send, Check } from 'lucide-react';
+import { MessageSquare, CheckCircle, Clock, AlertTriangle, XCircle, RefreshCw, Radio, ChevronRight, ArrowLeft, Save, X, Send, Check, BookOpen } from 'lucide-react';
+import { PayrollApprovalSOP } from '../components/PayrollApprovalSOP';
+import { LivePreview } from '../components/LivePreview';
 import { callTimecardFunction } from '../lib/supabase';
 import { supabase } from '../lib/supabase';
 import { getPayPeriodForDate, getPayPeriodList } from '../lib/payPeriod';
@@ -244,7 +246,7 @@ export function TimecardReview() {
   const [resolveNoteId, setResolveNoteId] = useState<string | null>(null);
   const [resolutionText, setResolutionText] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [view, setView] = useState<'pending' | 'approved'>('pending');
+  const [view, setView] = useState<'pending' | 'approved' | 'live' | 'sop'>('pending');
   const payPeriodOptions = getPayPeriodList();
   const currentPPStart = payPeriodOptions.find(p => p.isCurrent)?.start || payPeriodOptions[0]?.start || '';
   const [periodFilter, setPeriodFilter] = useState<string>(currentPPStart);
@@ -1248,6 +1250,22 @@ export function TimecardReview() {
           >
             Approved ({filterByPeriod(allReports).length})
           </button>
+          <button
+            onClick={() => setView('live')}
+            className={`px-4 py-2 text-sm font-bold rounded-md transition-all inline-flex items-center gap-1.5 ${
+              view === 'live' ? 'bg-white text-moja-blue shadow-sm' : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <Radio className="w-3.5 h-3.5" /> Live Preview
+          </button>
+          <button
+            onClick={() => setView('sop')}
+            className={`px-4 py-2 text-sm font-bold rounded-md transition-all inline-flex items-center gap-1.5 ${
+              view === 'sop' ? 'bg-white text-moja-blue shadow-sm' : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <BookOpen className="w-3.5 h-3.5" /> SOP Guide
+          </button>
         </div>
 
         <select
@@ -1262,7 +1280,11 @@ export function TimecardReview() {
         </select>
       </div>
 
-      {displayReports.length === 0 ? (
+      {view === 'sop' ? (
+        <PayrollApprovalSOP />
+      ) : view === 'live' ? (
+        <LivePreview />
+      ) : displayReports.length === 0 ? (
         <div className="bg-white rounded-xl border border-gray-100 p-12 text-center">
           <CheckCircle className="w-12 h-12 text-green-300 mx-auto mb-3" />
           <p className="text-lg font-bold text-gray-400">

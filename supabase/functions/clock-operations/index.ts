@@ -69,7 +69,8 @@ function nowEST(): string {
 function getWeekEnding(date: Date): string {
   const est = toEST(date);
   const day = est.getDay();
-  const diff = day === 0 ? 0 : 7 - day;
+  // Sat=6 week: end on Friday(5)
+  const diff = day <= 5 ? 5 - day : 5 - day + 7;
   est.setDate(est.getDate() + diff);
   const y = est.getFullYear();
   const m = String(est.getMonth() + 1).padStart(2, "0");
@@ -80,7 +81,8 @@ function getWeekEnding(date: Date): string {
 function getWeekStart(date: Date): Date {
   const est = toEST(date);
   const day = est.getDay();
-  const diff = day === 0 ? -6 : 1 - day;
+  // Week starts on Saturday(6)
+  const diff = day >= 6 ? 0 : -(day + 1);
   est.setDate(est.getDate() + diff);
   est.setHours(0, 0, 0, 0);
   return est;
@@ -579,10 +581,11 @@ Deno.serve(async (req: Request) => {
             }
 
             const newNote = `[${toESTISO(autoOut).replace("T", " ").slice(0, 16)}] Auto clock-out: shift exceeded ${maxHours}h limit`;
+            const existingNotes = openLog.notes ? openLog.notes + "\n" : "";
             await supabase.from("clock_logs").update({
               clock_out_time: toESTISO(autoOut),
               duration_minutes: durationMinutes,
-              notes: newNote,
+              notes: existingNotes + newNote,
             }).eq("id", openLog.id);
 
             await supabase.from("staff").update({ is_clocked_in: false, is_on_break: false }).eq("id", matchedStaff.id);
@@ -1625,6 +1628,12 @@ Deno.serve(async (req: Request) => {
         return json({ success: false, message: "Log not found" }, 404);
       }
 
+      await supabase.from("break_logs").delete().eq("clock_log_id", log_id);
+      const { error: delErr } = await supabase.from("clock_logs").delete().eq("id", log_id);
+      if (delErr) {
+        return json({ success: false, message: delErr.message }, 500);
+      }
+
       await supabase.from("audit_log").insert({
         admin_id: adminId,
         action: "manual_delete",
@@ -1633,9 +1642,6 @@ Deno.serve(async (req: Request) => {
         old_values: existing,
         reason,
       });
-
-      await supabase.from("break_logs").delete().eq("clock_log_id", log_id);
-      await supabase.from("clock_logs").delete().eq("id", log_id);
 
       return json({ success: true, message: "Log entry deleted" });
     }

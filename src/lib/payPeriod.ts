@@ -1,6 +1,6 @@
 /**
  * Maps a date to its bi-weekly pay period (Saturday start, Friday end).
- * Reference anchor: Saturday June 27, 2026 is a known period start (PP13).
+ * Reference anchor: Saturday June 27, 2026 is a known period start (PP14).
  * PP1 starts Saturday January 10, 2026.
  * Cutoff is the last day (Friday) of each period — a shift on the cutoff date
  * belongs to the period ENDING that day, not the next one.

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import type { Staff, ClockLog } from '../lib/types';
-import { Users, Clock, UserCheck, UserX, AlertTriangle, LogOut } from 'lucide-react';
+import { Users, Clock, UserCheck, UserX, AlertTriangle, LogOut, Bell, CheckCircle2 } from 'lucide-react';
 import { Toast } from '../components/Toast';
 import { formatHM } from '../lib/formatTime';
 
@@ -27,13 +27,15 @@ export function AdminDashboard() {
   const [staffList, setStaffList] = useState<Staff[]>([]);
   const [recentLogs, setRecentLogs] = useState<(ClockLog & { staff: { name: string } })[]>([]);
   const [openLogs, setOpenLogs] = useState<Map<string, string>>(new Map());
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [forceClockingOut, setForceClockingOut] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [maxShiftHours, setMaxShiftHours] = useState(12);
+  const [reminders, setReminders] = useState<{ id: string; title: string; description: string; next_due: string; assigned_to: string; due_time: string }[]>([]);
+  const [dismissedReminders, setDismissedReminders] = useState<Set<string>>(new Set());
 
   const loadData = useCallback(async () => {
-    const [staffRes, logsRes, settingsRes] = await Promise.all([
+    const [staffRes, logsRes, settingsRes, reminderRes] = await Promise.all([
       supabase.from('staff').select('*').order('name'),
       supabase
         .from('clock_logs')
@@ -45,6 +47,10 @@ export function AdminDashboard() {
         .select('key, value')
         .eq('key', 'max_shift_hours')
         .maybeSingle(),
+      supabase
+        .from('payroll_reminders')
+        .select('*')
+        .eq('is_active', true),
     ]);
 
     if (staffRes.data) setStaffList(staffRes.data);
@@ -60,6 +66,24 @@ export function AdminDashboard() {
     }
     if (settingsRes.data) {
       setMaxShiftHours(Number(settingsRes.data.value) || 12);
+    }
+    if (reminderRes.data) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const mapped = reminderRes.data.map((r: { id: string; title: string; description: string; first_due_date: string; recurrence_weeks: number; assigned_to: string; due_time: string }) => {
+        const first = new Date(r.first_due_date + 'T00:00:00');
+        const msPerCycle = r.recurrence_weeks * 7 * 86400000;
+        let next = new Date(first);
+        if (today > first) {
+          const elapsed = today.getTime() - first.getTime();
+          const cycles = Math.floor(elapsed / msPerCycle);
+          next = new Date(first.getTime() + cycles * msPerCycle);
+          if (next < today) next = new Date(next.getTime() + msPerCycle);
+        }
+        return { id: r.id, title: r.title, description: r.description || '', next_due: next.toISOString().slice(0, 10), assigned_to: r.assigned_to, due_time: r.due_time };
+      });
+      mapped.sort((a: { next_due: string }, b: { next_due: string }) => a.next_due.localeCompare(b.next_due));
+      setReminders(mapped);
     }
     setLoading(false);
   }, []);
@@ -183,6 +207,62 @@ export function AdminDashboard() {
           </div>
         </div>
       </div>
+
+      {/* Upcoming Reminders */}
+      {reminders.length > 0 && (
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+          <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2">
+            <Bell className="w-5 h-5 text-amber-500" />
+            <h2 className="text-lg font-bold text-moja-blue">Upcoming Reminders</h2>
+          </div>
+          <div className="divide-y divide-gray-100">
+            {reminders.filter(r => !dismissedReminders.has(r.id)).map(r => {
+              const dueDate = new Date(r.next_due + 'T00:00:00');
+              const today = new Date(); today.setHours(0, 0, 0, 0);
+              const diffDays = Math.round((dueDate.getTime() - today.getTime()) / 86400000);
+              const isOverdue = diffDays < 0;
+              const isToday = diffDays === 0;
+              const isSoon = diffDays > 0 && diffDays <= 3;
+
+              return (
+                <div key={r.id} className={`px-5 py-4 ${isOverdue ? 'bg-red-50/50' : isToday ? 'bg-amber-50/50' : ''}`}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="font-bold text-gray-900">{r.title}</h3>
+                        {isOverdue && <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-700">Overdue</span>}
+                        {isToday && <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-700">Due Today</span>}
+                        {isSoon && <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-700">In {diffDays} day{diffDays > 1 ? 's' : ''}</span>}
+                      </div>
+                      <p className="text-sm text-gray-500 mt-0.5">
+                        Due: {dueDate.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' })} &middot; {r.due_time} &middot; Assigned to: {r.assigned_to}
+                      </p>
+                      <ul className="mt-2 space-y-1">
+                        {r.description.split('\n').filter(Boolean).map((line, i) => (
+                          <li key={i} className="flex items-start gap-2 text-sm text-gray-700">
+                            <span className="w-1.5 h-1.5 rounded-full bg-moja-blue/40 mt-1.5 shrink-0" />
+                            {line}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                    <button
+                      onClick={() => setDismissedReminders(prev => new Set([...prev, r.id]))}
+                      className="shrink-0 p-2 rounded-lg text-gray-400 hover:text-green-600 hover:bg-green-50 transition-colors"
+                      title="Dismiss until next occurrence"
+                    >
+                      <CheckCircle2 className="w-5 h-5" />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+            {reminders.filter(r => !dismissedReminders.has(r.id)).length === 0 && (
+              <div className="px-5 py-6 text-center text-sm text-gray-400">All reminders dismissed for this cycle.</div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Currently Clocked In */}
       <div className="bg-white rounded-xl border border-gray-100 overflow-hidden shadow-sm">

@@ -7,7 +7,7 @@ import { Toast } from '../components/Toast';
 
 export function StaffManagement() {
   const [staffList, setStaffList] = useState<Staff[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [editingStaff, setEditingStaff] = useState<Staff | null>(null);
   const [resetPinStaff, setResetPinStaff] = useState<Staff | null>(null);
   const [newPin, setNewPin] = useState('');
