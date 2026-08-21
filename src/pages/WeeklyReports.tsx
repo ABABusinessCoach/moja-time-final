@@ -259,59 +259,102 @@ export function WeeklyReports() {
         staffMap.get(staff.id)!.logs.push(log);
       });
 
-      const rows: string[][] = [
-        ['Employee Name', 'Employee #', 'Date', 'Clock In', 'Clock Out', 'Raw Time', 'Break', 'Lunch', 'Final Hours', 'Overtime', 'Week Ending', 'Notes'],
-      ];
-
       const sortedStaff = Array.from(staffMap.values()).sort((a, b) => a.staff.name.localeCompare(b.staff.name));
 
+      const fmtTime = (d: Date) => d.toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: true });
+
+      type DaySummary = {
+        weekKey: string;
+        date: string;
+        shifts: { in: Date; out: Date | null }[];
+        rawMinutes: number;
+        breakMins: number;
+        lunchMins: number;
+        finalMinutes: number;
+        notes: string[];
+      };
+      type StaffPlan = { staff: Staff; days: DaySummary[] };
+
+      const plans: StaffPlan[] = [];
+      let maxShifts = 1;
+
       sortedStaff.forEach(({ staff, logs: staffLogs }) => {
-        const weekGroups = new Map<string, ClockLog[]>();
+        const dayMap = new Map<string, DaySummary>();
         staffLogs.forEach(log => {
-          const nyStr = nyDateStr(new Date(log.clock_in_time));
-          const [y, m, d] = nyStr.split('-').map(Number);
+          const clockIn = new Date(log.clock_in_time);
+          const clockOut = log.clock_out_time ? new Date(log.clock_out_time) : null;
+          const date = nyDateStr(clockIn);
+          const [y, m, d] = date.split('-').map(Number);
           const utcNoon = new Date(Date.UTC(y, m - 1, d, 12));
           const day = utcNoon.getUTCDay();
           const diffToSat = day === 6 ? 0 : -(day + 1);
           utcNoon.setUTCDate(utcNoon.getUTCDate() + diffToSat);
           const weekKey = utcNoon.toISOString().split('T')[0];
-          if (!weekGroups.has(weekKey)) weekGroups.set(weekKey, []);
-          weekGroups.get(weekKey)!.push(log);
+
+          if (!dayMap.has(date)) {
+            dayMap.set(date, { weekKey, date, shifts: [], rawMinutes: 0, breakMins: 0, lunchMins: 0, finalMinutes: 0, notes: [] });
+          }
+          const summary = dayMap.get(date)!;
+          summary.shifts.push({ in: clockIn, out: clockOut });
+
+          const rawMinutes = clockOut ? (clockOut.getTime() - clockIn.getTime()) / 60000 : 0;
+          summary.rawMinutes += rawMinutes;
+
+          const logBreaks = rangeBreaks.filter(b => b.clock_log_id === log.id);
+          const logBreakMins = logBreaks.filter(b => b.break_type === 'break').reduce((sum, b) => sum + (b.duration_minutes || 0), 0);
+          const logLunchMins = logBreaks.filter(b => b.break_type === 'lunch').reduce((sum, b) => sum + (b.duration_minutes || 0), 0);
+          summary.breakMins += logBreakMins;
+          summary.lunchMins += logLunchMins;
+
+          const grossMinutes = rangeCorrMap.has(log.id)
+            ? Math.max(0, rangeCorrMap.get(log.id) || 0)
+            : (log.duration_minutes ? Math.max(0, log.duration_minutes) : 0);
+          summary.finalMinutes += Math.max(0, grossMinutes - logLunchMins);
+
+          if (log.notes) summary.notes.push(log.notes);
         });
 
-        Array.from(weekGroups.entries()).sort((a, b) => a[0].localeCompare(b[0])).forEach(([, weekLogs]) => {
-          weekLogs.forEach(log => {
-            const clockIn = new Date(log.clock_in_time);
-            const clockOut = log.clock_out_time ? new Date(log.clock_out_time) : null;
-            const rawMinutes = clockOut ? (clockOut.getTime() - clockIn.getTime()) / 60000 : 0;
+        const days = Array.from(dayMap.values()).sort((a, b) => a.date.localeCompare(b.date));
+        days.forEach(day => {
+          day.shifts.sort((a, b) => a.in.getTime() - b.in.getTime());
+          if (day.shifts.length > maxShifts) maxShifts = day.shifts.length;
+        });
+        plans.push({ staff, days });
+      });
 
-            const logBreaks = rangeBreaks.filter(b => b.clock_log_id === log.id);
-            const breakMins = logBreaks.filter(b => b.break_type === 'break').reduce((sum, b) => sum + (b.duration_minutes || 0), 0);
-            const lunchMins = logBreaks.filter(b => b.break_type === 'lunch').reduce((sum, b) => sum + (b.duration_minutes || 0), 0);
+      const header = ['Employee Name', 'Employee #', 'Date'];
+      for (let i = 1; i <= maxShifts; i++) {
+        header.push(`Clock In${maxShifts > 1 ? ` ${i}` : ''}`);
+        header.push(`Clock Out${maxShifts > 1 ? ` ${i}` : ''}`);
+      }
+      header.push('Raw Time', 'Break', 'Lunch', 'Final Hours', 'Overtime', 'Week Ending', 'Notes');
 
-            const grossMinutes = rangeCorrMap.has(log.id)
-              ? Math.max(0, rangeCorrMap.get(log.id) || 0)
-              : (log.duration_minutes ? Math.max(0, log.duration_minutes) : 0);
-            const finalMinutes = Math.max(0, grossMinutes - lunchMins);
+      const rows: string[][] = [header];
+      const emptyRow = header.map(() => '');
 
-            rows.push([
-              staff.name,
-              staff.employee_number || '',
-              nyDateStr(clockIn),
-              clockIn.toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: true }),
-              clockOut ? clockOut.toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: true }) : 'In Progress',
-              rawMinutes > 0 ? formatHM(rawMinutes) : '-',
-              breakMins > 0 ? `${breakMins}m` : '',
-              lunchMins > 0 ? `${lunchMins}m` : '',
-              finalMinutes > 0 ? formatHM(finalMinutes) : '-',
-              '',
-              '',
-              log.notes || '',
-            ]);
-          });
+      plans.forEach(({ staff, days }) => {
+        days.forEach(day => {
+          const row: string[] = [staff.name, staff.employee_number || '', day.date];
+          for (let i = 0; i < maxShifts; i++) {
+            const shift = day.shifts[i];
+            if (!shift) {
+              row.push('', '');
+            } else {
+              row.push(fmtTime(shift.in));
+              row.push(shift.out ? fmtTime(shift.out) : 'In Progress');
+            }
+          }
+          row.push(day.rawMinutes > 0 ? formatHM(day.rawMinutes) : '-');
+          row.push(day.breakMins > 0 ? `${day.breakMins}m` : '');
+          row.push(day.lunchMins > 0 ? `${day.lunchMins}m` : '');
+          row.push(day.finalMinutes > 0 ? formatHM(day.finalMinutes) : '-');
+          row.push('');
+          row.push(day.weekKey);
+          row.push(day.notes.join(' | '));
+          rows.push(row);
         });
 
-        rows.push(['', '', '', '', '', '', '', '', '', '', '', '']);
+        rows.push([...emptyRow]);
       });
 
       const csv = rows.map((r, ri) => r.map((c, ci) => {
