@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Payroll Approval SOP - Moja Behavioral Services</title>
+  <style>
+    @page { margin: 0.75in; size: letter; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      color: #1a1a2e;
+      line-height: 1.6;
+      padding: 48px;
+      max-width: 8.5in;
+      margin: 0 auto;
+    }
+    h1 { font-size: 24px; color: #355574; margin-bottom: 4px; }
+    h2 { font-size: 18px; color: #355574; margin: 36px 0 12px; border-bottom: 2px solid #e66d38; padding-bottom: 6px; }
+    h3 { font-size: 14px; color: #e66d38; margin: 20px 0 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+    p, li { font-size: 13px; }
+    .subtitle { font-size: 14px; color: #666; margin-bottom: 24px; }
+    .header-bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+    .logo-text { font-size: 11px; color: #e66d38; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; }
+    ul, ol { padding-left: 20px; margin: 8px 0; }
+    li { margin-bottom: 6px; }
+    .callout {
+      background: #fff7ed;
+      border-left: 4px solid #e66d38;
+      padding: 12px 16px;
+      margin: 16px 0;
+      border-radius: 0 6px 6px 0;
+      font-size: 12px;
+    }
+    .callout-blue {
+      background: #eff6ff;
+      border-left: 4px solid #355574;
+      padding: 12px 16px;
+      margin: 16px 0;
+      border-radius: 0 6px 6px 0;
+      font-size: 12px;
+    }
+    .callout-green {
+      background: #f0fdf4;
+      border-left: 4px solid #16a34a;
+      padding: 12px 16px;
+      margin: 16px 0;
+      border-radius: 0 6px 6px 0;
+      font-size: 12px;
+    }
+    .callout-red {
+      background: #fef2f2;
+      border-left: 4px solid #dc2626;
+      padding: 12px 16px;
+      margin: 16px 0;
+      border-radius: 0 6px 6px 0;
+      font-size: 12px;
+    }
+    .step-card {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 16px 20px;
+      margin: 16px 0;
+    }
+    .step-number {
+      display: inline-block;
+      width: 28px;
+      height: 28px;
+      line-height: 28px;
+      text-align: center;
+      background: #355574;
+      color: white;
+      border-radius: 50%;
+      font-size: 13px;
+      font-weight: 700;
+      margin-right: 10px;
+      vertical-align: middle;
+    }
+    .step-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: #355574;
+      vertical-align: middle;
+    }
+    .step-body { margin-top: 10px; padding-left: 38px; }
+    .step-body p { margin-bottom: 8px; }
+    .status-table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 12px; }
+    .status-table th { background: #355574; color: white; padding: 8px 12px; text-align: left; }
+    .status-table td { padding: 8px 12px; border-bottom: 1px solid #e2e8f0; }
+    .status-table tr:nth-child(even) td { background: #f8fafc; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 700; }
+    .badge-pending { background: #dbeafe; color: #1e40af; }
+    .badge-employee { background: #d1fae5; color: #065f46; }
+    .badge-notes { background: #fef3c7; color: #92400e; }
+    .badge-approved { background: #d1fae5; color: #065f46; }
+    .flow-diagram {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 20px;
+      margin: 16px 0;
+      text-align: center;
+    }
+    .flow-step {
+      display: inline-block;
+      background: white;
+      border: 2px solid #355574;
+      border-radius: 8px;
+      padding: 8px 14px;
+      font-size: 11px;
+      font-weight: 600;
+      color: #355574;
+      margin: 4px;
+      vertical-align: middle;
+    }
+    .flow-step.active { background: #355574; color: white; }
+    .flow-step.success { background: #16a34a; border-color: #16a34a; color: white; }
+    .flow-step.warning { background: #f59e0b; border-color: #f59e0b; color: white; }
+    .flow-arrow { display: inline-block; font-size: 18px; color: #94a3b8; margin: 0 4px; vertical-align: middle; }
+    .checklist { list-style: none; padding-left: 0; }
+    .checklist li {
+      position: relative;
+      padding-left: 28px;
+      margin-bottom: 10px;
+      font-size: 13px;
+    }
+    .checklist li::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 3px;
+      width: 16px;
+      height: 16px;
+      border: 2px solid #355574;
+      border-radius: 3px;
+      background: white;
+    }
+    .page-break { page-break-before: always; }
+    @media print {
+      body { padding: 0; }
+      .no-print { display: none; }
+    }
+    @media (max-width: 600px) {
+      body { padding: 20px; }
+      .header-bar { flex-direction: column; align-items: flex-start; gap: 4px; }
+      .flow-step { font-size: 10px; padding: 6px 10px; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="header-bar">
+  <div>
+    <h1>How to Review &amp; Approve Payroll</h1>
+    <p class="subtitle">Admin Standard Operating Procedure &mdash; Moja Behavioral Services</p>
+  </div>
+  <div class="logo-text">Admin Guide</div>
+</div>
+
+<!-- OVERVIEW FLOW -->
+<div class="flow-diagram">
+  <span class="flow-step active">Log In</span>
+  <span class="flow-arrow">&rarr;</span>
+  <span class="flow-step">Open Timecard Reports</span>
+  <span class="flow-arrow">&rarr;</span>
+  <span class="flow-step">Select Employee</span>
+  <span class="flow-arrow">&rarr;</span>
+  <span class="flow-step warning">Handle Notes &amp; Corrections</span>
+  <span class="flow-arrow">&rarr;</span>
+  <span class="flow-step success">Approve &amp; Send</span>
+</div>
+
+<div class="callout-red">
+  <strong>Key Rule:</strong> Every employee must be individually reviewed and approved &mdash; even if they have no correction requests, no open notes, and their hours look perfect. <strong>Do not skip anyone.</strong> No timecard should be left in "Pending" or "Employee Approved" status when payroll is submitted.
+</div>
+
+<!-- WHEN TO DO THIS -->
+<h2>When to Run Payroll Approval</h2>
+
+<div class="flow-diagram" style="text-align: left; padding: 20px 24px;">
+  <table style="width: 100%; font-size: 12px; border: none;">
+    <tr>
+      <td style="padding: 6px 0; font-weight: 700; color: #355574; width: 160px;">Pay Period:</td>
+      <td style="padding: 6px 0;">Every 2 weeks, Saturday through Friday</td>
+    </tr>
+    <tr>
+      <td style="padding: 6px 0; font-weight: 700; color: #355574;">Timecards Sent:</td>
+      <td style="padding: 6px 0;">Last Friday of each pay period at 3:00 PM</td>
+    </tr>
+    <tr>
+      <td style="padding: 6px 0; font-weight: 700; color: #355574;">Employee Deadline:</td>
+      <td style="padding: 6px 0;">8:00 PM EST the same day (review &amp; submit corrections)</td>
+    </tr>
+    <tr>
+      <td style="padding: 6px 0; font-weight: 700; color: #355574;">Admin Approval Window:</td>
+      <td style="padding: 6px 0;">After employee deadline through Monday at end of day</td>
+    </tr>
+    <tr>
+      <td style="padding: 6px 0; font-weight: 700; color: #355574;">Reminder Email:</td>
+      <td style="padding: 6px 0;">Automated email sent to all admins every other Monday at 9:00 AM</td>
+    </tr>
+  </table>
+</div>
+
+<div class="callout">
+  <strong>Tip:</strong> You will receive an automated reminder email on payroll Mondays with a checklist. Use it as your cue to begin the approval process if you have not already started.
+</div>
+
+<!-- STEP BY STEP -->
+<h2>Step-by-Step Instructions</h2>
+
+<div class="step-card">
+  <span class="step-number">1</span>
+  <span class="step-title">Log In to the Admin Dashboard</span>
+  <div class="step-body">
+    <p>Open the Moja Time app in your browser and sign in with your admin email and password.</p>
+    <p>If you have trouble logging in, use the "Reset Password" link on the login page.</p>
+  </div>
+</div>
+
+<div class="step-card">
+  <span class="step-number">2</span>
+  <span class="step-title">Navigate to Timecard Reports</span>
+  <div class="step-body">
+    <p>From the left sidebar, click <strong>"Timecards"</strong>. You will land on the Timecard Reports page.</p>
+    <p>At the top, you will see a count badge (e.g., <em>"23 need review"</em>) showing how many timecards still require your attention.</p>
+  </div>
+</div>
+
+<div class="step-card">
+  <span class="step-number">3</span>
+  <span class="step-title">Confirm the Correct Pay Period</span>
+  <div class="step-body">
+    <p>Use the <strong>pay period dropdown</strong> at the top to make sure you are looking at the correct 2-week period. The current period is selected by default.</p>
+    <p>The <strong>"Needs Review"</strong> tab shows timecards that have not been admin-approved yet. The <strong>"Approved"</strong> tab shows ones you have already finished.</p>
+  </div>
+</div>
+
+<div class="callout-blue">
+  <strong>Goal:</strong> By the time you are done, every employee should appear under the "Approved" tab with zero remaining in "Needs Review."
+</div>
+
+<div class="step-card">
+  <span class="step-number">4</span>
+  <span class="step-title">Open the First Employee's Timecard</span>
+  <div class="step-body">
+    <p>Click on any employee's name in the list. You will see their full 2-week timecard with:</p>
+    <ul>
+      <li><strong>Week 1 and Week 2 grids</strong> &mdash; showing regular hours, overtime, and daily totals for each day (Saturday through Friday)</li>
+      <li><strong>Period totals</strong> &mdash; regular hours, overtime hours, and grand total at the bottom</li>
+      <li><strong>Status badge</strong> &mdash; showing Pending, Employee Approved, Has Notes, or Approved</li>
+    </ul>
+  </div>
+</div>
+
+<h3>Understanding the status badges</h3>
+
+<table class="status-table">
+  <tr>
+    <th style="width: 160px;">Status</th>
+    <th>What It Means</th>
+    <th style="width: 200px;">Action Required</th>
+  </tr>
+  <tr>
+    <td><span class="badge badge-pending">Pending</span></td>
+    <td>Employee has not reviewed their timecard yet</td>
+    <td>Review the hours yourself, then approve</td>
+  </tr>
+  <tr>
+    <td><span class="badge badge-employee">Employee Approved</span></td>
+    <td>Employee reviewed and confirmed their hours are correct</td>
+    <td>Verify and approve</td>
+  </tr>
+  <tr>
+    <td><span class="badge badge-notes">Has Notes</span></td>
+    <td>Employee submitted notes or correction requests</td>
+    <td>Handle each note/correction, then approve</td>
+  </tr>
+  <tr>
+    <td><span class="badge badge-approved">Approved</span></td>
+    <td>You have already approved this timecard</td>
+    <td>None &mdash; this one is done</td>
+  </tr>
+</table>
+
+<div class="page-break"></div>
+
+<div class="step-card">
+  <span class="step-number">5</span>
+  <span class="step-title">Review the Hours</span>
+  <div class="step-body">
+    <p>Look at each day in the grid. Verify that the hours look reasonable for that employee's expected schedule.</p>
+    <p><strong>Things to watch for:</strong></p>
+    <ul>
+      <li>Unusually long or short shifts</li>
+      <li>Days that should have a shift but show 0h 00m</li>
+      <li>Days showing hours when the employee was not scheduled</li>
+      <li>Overtime that was not pre-approved</li>
+      <li>A <strong>"LIVE"</strong> indicator on a shift &mdash; this means the employee is currently clocked in and their shift is still running</li>
+    </ul>
+  </div>
+</div>
+
+<div class="callout">
+  <strong>Editing a shift:</strong> To change an employee's hours, click on any day in the grid. A pop-up will appear where you can adjust the clock-in time, clock-out time, break times, and lunch times. Click <strong>"Save Override"</strong> when done. The totals will recalculate automatically.
+</div>
+
+<div class="callout-blue">
+  <strong>Adding a missing shift:</strong> If an employee worked a day that shows no hours, click on that empty day in the grid. A pop-up will appear where you can enter the clock-in, clock-out, break, and lunch times. Click <strong>"Add Hours"</strong> to save it.
+</div>
+
+<div class="step-card">
+  <span class="step-number">6</span>
+  <span class="step-title">Handle Correction Requests (If Any)</span>
+  <div class="step-body">
+    <p>If the employee submitted a correction request, you will see a <strong>yellow banner</strong> below the week grid showing what they are requesting (e.g., a different clock-in or clock-out time, or a total hour override).</p>
+    <p>For each correction request:</p>
+    <ul>
+      <li>Read the employee's note explaining the change</li>
+      <li>Click <strong>"Approve"</strong> if the correction is valid &mdash; the hours will update automatically</li>
+      <li>Click <strong>"Reject"</strong> if it is not valid &mdash; you can optionally provide a reason</li>
+    </ul>
+    <p>You must handle every pending correction before approving the timecard.</p>
+  </div>
+</div>
+
+<div class="step-card">
+  <span class="step-number">7</span>
+  <span class="step-title">Respond to Open Notes (If Any)</span>
+  <div class="step-body">
+    <p>If the employee left general notes or questions, you will see an <strong>"Open Notes"</strong> section below the timecard grid.</p>
+    <p>For each note, click <strong>"Respond"</strong> and then choose:</p>
+    <ul>
+      <li><strong>Resolve</strong> &mdash; if you have addressed the issue (add a resolution comment if helpful)</li>
+      <li><strong>Dismiss</strong> &mdash; if the note does not require action</li>
+    </ul>
+  </div>
+</div>
+
+<div class="step-card">
+  <span class="step-number">8</span>
+  <span class="step-title">Approve &amp; Send Final Hours</span>
+  <div class="step-body">
+    <p>Once you have verified the hours and handled all notes and corrections, scroll to the bottom of the timecard.</p>
+    <p>Click the green <strong>"Approve &amp; Send Email"</strong> button.</p>
+    <p>This does two things:</p>
+    <ol>
+      <li>Locks the timecard as <strong>Approved</strong> &mdash; no further changes can be made</li>
+      <li>Sends a <strong>confirmation email</strong> to the employee with their finalized hours</li>
+    </ol>
+  </div>
+</div>
+
+<div class="callout-green">
+  <strong>Confirmation:</strong> After clicking approve, you will see a green banner confirming the timecard is fully approved and the email has been sent. You can now click <strong>"Back"</strong> and move to the next employee.
+</div>
+
+<div class="step-card">
+  <span class="step-number">9</span>
+  <span class="step-title">Repeat for Every Employee</span>
+  <div class="step-body">
+    <p>Click <strong>"Back"</strong> to return to the list. Open the next employee and repeat Steps 5 through 8.</p>
+    <p><strong>Continue until the "Needs Review" count reaches zero and every employee is under the "Approved" tab.</strong></p>
+  </div>
+</div>
+
+<div class="callout-red">
+  <strong>Do not skip anyone.</strong> Even if an employee's hours look perfect and they have no corrections or notes, you must still click into their timecard and click <strong>"Approve &amp; Send Email"</strong>. Unapproved timecards will not be included in the final payroll count.
+</div>
+
+<div class="page-break"></div>
+
+<!-- SENDING TIMECARDS -->
+<h2>Sending Timecards to Employees</h2>
+
+<p>Before you can approve timecards, employees need to receive them. This is typically done automatically at the end of each pay period, but you can also send (or re-send) timecards manually.</p>
+
+<div class="step-card">
+  <span class="step-number">A</span>
+  <span class="step-title">Click "Send Timecards"</span>
+  <div class="step-body">
+    <p>Click the orange <strong>"Send Timecards"</strong> button in the top-right corner of the Timecard Reports page.</p>
+  </div>
+</div>
+
+<div class="step-card">
+  <span class="step-number">B</span>
+  <span class="step-title">Select Pay Period and Staff</span>
+  <div class="step-body">
+    <p>Choose the pay period from the dropdown. By default, all active employees are selected. You can deselect individuals if needed.</p>
+    <p>Check the <strong>"Re-send existing timecards"</strong> box if you want to regenerate and re-email timecards for employees who already received one (useful if hours have changed since the original send).</p>
+  </div>
+</div>
+
+<div class="step-card">
+  <span class="step-number">C</span>
+  <span class="step-title">Click "Send"</span>
+  <div class="step-body">
+    <p>Click the <strong>"Send to X Staff"</strong> button. Each selected employee will receive an email with a link to review their timecard.</p>
+  </div>
+</div>
+
+<!-- COMPLETION CHECKLIST -->
+<h2>Payroll Approval Completion Checklist</h2>
+
+<p>Use this checklist each pay period to confirm you have completed everything:</p>
+
+<ul class="checklist">
+  <li>Timecards have been sent to all active employees</li>
+  <li>All correction requests have been approved or rejected</li>
+  <li>All open employee notes have been resolved or dismissed</li>
+  <li>Any missing shifts have been added for employees who forgot to clock in/out</li>
+  <li>Any incorrect shifts have been overridden with correct times</li>
+  <li>Overtime hours have been reviewed and verified</li>
+  <li><strong>Every single employee has been individually approved</strong> (the "Needs Review" count is 0)</li>
+  <li>All employees now appear under the "Approved" tab</li>
+</ul>
+
+<!-- TROUBLESHOOTING -->
+<h2>Common Situations</h2>
+
+<h3>Employee forgot to clock in or out</h3>
+<p>Click on the affected day in their timecard grid. If the day is empty, the "Add Hours" pop-up will appear. If the day has a partial shift (e.g., clocked in but never out), the "Override Shift Hours" pop-up will appear. Enter the correct times and save.</p>
+
+<h3>Employee has a "LIVE" shift still running</h3>
+<p>This means the employee is currently clocked in or forgot to clock out. You can either wait for them to clock out, or click on the shift and override it with the correct clock-out time.</p>
+
+<h3>Employee never reviewed their timecard</h3>
+<p>Their status will show <span class="badge badge-pending">Pending</span>. This is fine &mdash; you can still review and approve their timecard. Their hours are calculated from their actual clock-in/clock-out records regardless of whether they reviewed.</p>
+
+<h3>An employee is missing from the list</h3>
+<p>Their timecard may not have been generated. Click <strong>"Send Timecards"</strong>, select just that employee, and send. Their timecard will appear in the list.</p>
+
+<h3>You need to change hours after already approving</h3>
+<p>Once approved, a timecard is locked. If you need to make a change, contact your system administrator to have the approval status reset.</p>
+
+<!-- FOOTER -->
+<div style="margin-top: 48px; padding-top: 16px; border-top: 1px solid #e2e8f0; font-size: 11px; color: #94a3b8; text-align: center;">
+  Moja Behavioral Services &mdash; Admin Payroll Approval SOP<br>
+  Last Updated: August 2026 | For internal use only
+</div>
+
+</body>
+</html>

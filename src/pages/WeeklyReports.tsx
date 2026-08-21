@@ -222,10 +222,13 @@ export function WeeklyReports() {
     setRangeExporting(true);
 
     try {
-      const startDate = new Date(rangeStart);
-      startDate.setHours(0, 0, 0, 0);
-      const endDate = new Date(rangeEnd);
-      endDate.setHours(23, 59, 59, 999);
+      const nyDateFmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' });
+      const nyDateStr = (d: Date) => nyDateFmt.format(d);
+
+      const startDate = new Date(`${rangeStart}T00:00:00Z`);
+      startDate.setUTCDate(startDate.getUTCDate() - 1);
+      const endDate = new Date(`${rangeEnd}T23:59:59Z`);
+      endDate.setUTCDate(endDate.getUTCDate() + 1);
 
       const [staffRes, logsRes, breaksRes, corrRes] = await Promise.all([
         supabase.from('staff').select('*').order('name'),
@@ -238,6 +241,11 @@ export function WeeklyReports() {
       let rangeLogs: ClockLog[] = logsRes.data || [];
       const rangeBreaks: BreakLog[] = breaksRes.data || [];
       const rangeCorrMap = new Map((corrRes.data || []).map((c: { clock_log_id: string; proposed_duration_minutes: number }) => [c.clock_log_id, c.proposed_duration_minutes]));
+
+      rangeLogs = rangeLogs.filter(l => {
+        const d = nyDateStr(new Date(l.clock_in_time));
+        return d >= rangeStart && d <= rangeEnd;
+      });
 
       if (rangeStaff) {
         rangeLogs = rangeLogs.filter(l => l.staff_id === rangeStaff);
@@ -255,29 +263,23 @@ export function WeeklyReports() {
         ['Employee Name', 'Employee #', 'Date', 'Clock In', 'Clock Out', 'Raw Time', 'Break', 'Lunch', 'Final Hours', 'Overtime', 'Week Ending', 'Notes'],
       ];
 
-      let grandTotalHours = 0;
-      let grandTotalOvertime = 0;
-
       const sortedStaff = Array.from(staffMap.values()).sort((a, b) => a.staff.name.localeCompare(b.staff.name));
 
       sortedStaff.forEach(({ staff, logs: staffLogs }) => {
         const weekGroups = new Map<string, ClockLog[]>();
         staffLogs.forEach(log => {
-          const logDate = new Date(log.clock_in_time);
-          const day = logDate.getDay();
+          const nyStr = nyDateStr(new Date(log.clock_in_time));
+          const [y, m, d] = nyStr.split('-').map(Number);
+          const utcNoon = new Date(Date.UTC(y, m - 1, d, 12));
+          const day = utcNoon.getUTCDay();
           const diffToSat = day === 6 ? 0 : -(day + 1);
-          const sat = new Date(logDate);
-          sat.setDate(logDate.getDate() + diffToSat);
-          const weekKey = sat.toISOString().split('T')[0];
+          utcNoon.setUTCDate(utcNoon.getUTCDate() + diffToSat);
+          const weekKey = utcNoon.toISOString().split('T')[0];
           if (!weekGroups.has(weekKey)) weekGroups.set(weekKey, []);
           weekGroups.get(weekKey)!.push(log);
         });
 
-        let staffTotalHours = 0;
-        let staffTotalOvertime = 0;
-
         Array.from(weekGroups.entries()).sort((a, b) => a[0].localeCompare(b[0])).forEach(([, weekLogs]) => {
-          let weekTotal = 0;
           weekLogs.forEach(log => {
             const clockIn = new Date(log.clock_in_time);
             const clockOut = log.clock_out_time ? new Date(log.clock_out_time) : null;
@@ -291,12 +293,11 @@ export function WeeklyReports() {
               ? Math.max(0, rangeCorrMap.get(log.id) || 0)
               : (log.duration_minutes ? Math.max(0, log.duration_minutes) : 0);
             const finalMinutes = Math.max(0, grossMinutes - lunchMins);
-            weekTotal += finalMinutes;
 
             rows.push([
               staff.name,
               staff.employee_number || '',
-              clockIn.toISOString().split('T')[0],
+              nyDateStr(clockIn),
               clockIn.toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: true }),
               clockOut ? clockOut.toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: true }) : 'In Progress',
               rawMinutes > 0 ? formatHM(rawMinutes) : '-',
@@ -308,19 +309,10 @@ export function WeeklyReports() {
               log.notes || '',
             ]);
           });
-
-          const weekOvertime = Math.max(0, weekTotal - 40 * 60);
-          staffTotalHours += weekTotal;
-          staffTotalOvertime += weekOvertime;
         });
 
-        rows.push([`--- ${staff.name} TOTAL ---`, staff.employee_number || '', '', '', '', '', '', '', staffTotalHours > 0 ? formatHM(staffTotalHours) : '-', staffTotalOvertime > 0 ? formatHM(staffTotalOvertime) : '-', '', '']);
         rows.push(['', '', '', '', '', '', '', '', '', '', '', '']);
-        grandTotalHours += staffTotalHours;
-        grandTotalOvertime += staffTotalOvertime;
       });
-
-      rows.push(['=== GRAND TOTAL ===', '', `${rangeStart} to ${rangeEnd}`, '', '', '', '', '', grandTotalHours > 0 ? formatHM(grandTotalHours) : '-', grandTotalOvertime > 0 ? formatHM(grandTotalOvertime) : '-', '', '']);
 
       const csv = rows.map((r, ri) => r.map((c, ci) => {
         if (ri > 0 && ci === 1 && c) return `="${c}"`;
