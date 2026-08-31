@@ -262,25 +262,19 @@ export function WeeklyReports() {
       const sortedStaff = Array.from(staffMap.values()).sort((a, b) => a.staff.name.localeCompare(b.staff.name));
 
       const fmtTime = (d: Date) => d.toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: true });
-
-      type DaySummary = {
-        weekKey: string;
-        date: string;
-        shifts: { in: Date; out: Date | null }[];
-        rawMinutes: number;
-        breakMins: number;
-        lunchMins: number;
-        finalMinutes: number;
-        notes: string[];
+      const toMDY = (iso: string) => {
+        const [y, m, d] = iso.split('-').map(Number);
+        return `${m}/${d}/${y}`;
       };
-      type StaffPlan = { staff: Staff; days: DaySummary[] };
 
-      const plans: StaffPlan[] = [];
-      let maxShifts = 1;
+      const header = ['Employee Name', 'Employee #', 'Date', 'Clock In', 'Clock Out', 'Raw Time', 'Break', 'Lunch', 'Final Hours', 'Overtime', 'Week Ending', '', '', 'Notes'];
+      const rows: string[][] = [header];
+      const emptyRow = header.map(() => '');
 
       sortedStaff.forEach(({ staff, logs: staffLogs }) => {
-        const dayMap = new Map<string, DaySummary>();
-        staffLogs.forEach(log => {
+        const sortedLogs = [...staffLogs].sort((a, b) => new Date(a.clock_in_time).getTime() - new Date(b.clock_in_time).getTime());
+
+        sortedLogs.forEach(log => {
           const clockIn = new Date(log.clock_in_time);
           const clockOut = log.clock_out_time ? new Date(log.clock_out_time) : null;
           const date = nyDateStr(clockIn);
@@ -290,77 +284,83 @@ export function WeeklyReports() {
           const diffToSat = day === 6 ? 0 : -(day + 1);
           utcNoon.setUTCDate(utcNoon.getUTCDate() + diffToSat);
           const weekKey = utcNoon.toISOString().split('T')[0];
-
-          if (!dayMap.has(date)) {
-            dayMap.set(date, { weekKey, date, shifts: [], rawMinutes: 0, breakMins: 0, lunchMins: 0, finalMinutes: 0, notes: [] });
-          }
-          const summary = dayMap.get(date)!;
-          summary.shifts.push({ in: clockIn, out: clockOut });
+          const weekEndingMDY = toMDY(weekKey);
+          const dateMDY = toMDY(date);
 
           const rawMinutes = clockOut ? (clockOut.getTime() - clockIn.getTime()) / 60000 : 0;
-          summary.rawMinutes += rawMinutes;
 
-          const logBreaks = rangeBreaks.filter(b => b.clock_log_id === log.id);
-          const logBreakMins = logBreaks.filter(b => b.break_type === 'break').reduce((sum, b) => sum + (b.duration_minutes || 0), 0);
-          const logLunchMins = logBreaks.filter(b => b.break_type === 'lunch').reduce((sum, b) => sum + (b.duration_minutes || 0), 0);
-          summary.breakMins += logBreakMins;
-          summary.lunchMins += logLunchMins;
+          const logBreaks = rangeBreaks
+            .filter(b => b.clock_log_id === log.id)
+            .sort((a, b) => new Date(a.break_start).getTime() - new Date(b.break_start).getTime());
+          const completedBreaks = logBreaks.filter(b => b.break_end);
+          const breakMins = logBreaks.filter(b => b.break_type === 'break').reduce((sum, b) => sum + (b.duration_minutes || 0), 0);
+          const lunchMins = logBreaks.filter(b => b.break_type === 'lunch').reduce((sum, b) => sum + (b.duration_minutes || 0), 0);
 
           const grossMinutes = rangeCorrMap.has(log.id)
             ? Math.max(0, rangeCorrMap.get(log.id) || 0)
             : (log.duration_minutes ? Math.max(0, log.duration_minutes) : 0);
-          summary.finalMinutes += Math.max(0, grossMinutes - logLunchMins);
+          const finalMinutes = Math.max(0, grossMinutes - lunchMins);
 
-          if (log.notes) summary.notes.push(log.notes);
-        });
+          const canSplit = clockOut && completedBreaks.length > 0 && !rangeCorrMap.has(log.id);
 
-        const days = Array.from(dayMap.values()).sort((a, b) => a.date.localeCompare(b.date));
-        days.forEach(day => {
-          day.shifts.sort((a, b) => a.in.getTime() - b.in.getTime());
-          if (day.shifts.length > maxShifts) maxShifts = day.shifts.length;
-        });
-        plans.push({ staff, days });
-      });
-
-      const header = ['Employee Name', 'Employee #', 'Date'];
-      for (let i = 1; i <= maxShifts; i++) {
-        header.push(`Clock In${maxShifts > 1 ? ` ${i}` : ''}`);
-        header.push(`Clock Out${maxShifts > 1 ? ` ${i}` : ''}`);
-      }
-      header.push('Raw Time', 'Break', 'Lunch', 'Final Hours', 'Overtime', 'Week Ending', 'Notes');
-
-      const rows: string[][] = [header];
-      const emptyRow = header.map(() => '');
-
-      plans.forEach(({ staff, days }) => {
-        days.forEach(day => {
-          const row: string[] = [staff.name, staff.employee_number || '', day.date];
-          for (let i = 0; i < maxShifts; i++) {
-            const shift = day.shifts[i];
-            if (!shift) {
-              row.push('', '');
-            } else {
-              row.push(fmtTime(shift.in));
-              row.push(shift.out ? fmtTime(shift.out) : 'In Progress');
+          if (canSplit) {
+            const segments: { start: Date; end: Date }[] = [];
+            let cursor = clockIn;
+            for (const b of completedBreaks) {
+              const bStart = new Date(b.break_start);
+              const bEnd = new Date(b.break_end!);
+              if (bStart.getTime() > cursor.getTime()) {
+                segments.push({ start: cursor, end: bStart });
+              }
+              cursor = bEnd;
             }
+            if (clockOut.getTime() > cursor.getTime()) {
+              segments.push({ start: cursor, end: clockOut });
+            }
+
+            segments.forEach((seg, idx) => {
+              const segMins = (seg.end.getTime() - seg.start.getTime()) / 60000;
+              rows.push([
+                staff.name,
+                staff.employee_number || '',
+                dateMDY,
+                fmtTime(seg.start),
+                fmtTime(seg.end),
+                segMins > 0 ? formatHM(segMins) : '-',
+                '',
+                '',
+                segMins > 0 ? formatHM(segMins) : '-',
+                '',
+                weekEndingMDY,
+                '',
+                '',
+                idx === 0 ? (log.notes || '') : '',
+              ]);
+            });
+          } else {
+            rows.push([
+              staff.name,
+              staff.employee_number || '',
+              dateMDY,
+              fmtTime(clockIn),
+              clockOut ? fmtTime(clockOut) : 'In Progress',
+              rawMinutes > 0 ? formatHM(rawMinutes) : '-',
+              breakMins > 0 ? `${breakMins}m` : '',
+              lunchMins > 0 ? `${lunchMins}m` : '',
+              finalMinutes > 0 ? formatHM(finalMinutes) : '-',
+              '',
+              weekEndingMDY,
+              '',
+              '',
+              log.notes || '',
+            ]);
           }
-          row.push(day.rawMinutes > 0 ? formatHM(day.rawMinutes) : '-');
-          row.push(day.breakMins > 0 ? `${day.breakMins}m` : '');
-          row.push(day.lunchMins > 0 ? `${day.lunchMins}m` : '');
-          row.push(day.finalMinutes > 0 ? formatHM(day.finalMinutes) : '-');
-          row.push('');
-          row.push(day.weekKey);
-          row.push(day.notes.join(' | '));
-          rows.push(row);
         });
 
         rows.push([...emptyRow]);
       });
 
-      const csv = rows.map((r, ri) => r.map((c, ci) => {
-        if (ri > 0 && ci === 1 && c) return `="${c}"`;
-        return `"${c}"`;
-      }).join(',')).join('\n');
+      const csv = rows.map(r => r.map(c => `"${c}"`).join(',')).join('\n');
       const filename = `moja_timesheet_${rangeStart.replace(/-/g, '')}_to_${rangeEnd.replace(/-/g, '')}.csv`;
       downloadBlob(csv, filename);
     } finally {
