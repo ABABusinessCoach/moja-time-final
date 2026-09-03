@@ -1,67 +1,46 @@
-import { createClient } from '@supabase/supabase-js';
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
-
-export const EDGE_FUNCTION_URL = `${supabaseUrl}/functions/v1/clock-operations`;
-export const TIMECARD_FUNCTION_URL = `${supabaseUrl}/functions/v1/timecard-reports`;
-
-export async function callEdgeFunction(path: string, body?: Record<string, unknown>, authToken?: string) {
-  const response = await fetch(`${EDGE_FUNCTION_URL}${path}`, {
-    method: body ? 'POST' : 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${authToken || supabaseAnonKey}`,
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  });
-
-  if (!response.ok) {
-    try {
-      const errorData = await response.json();
-      return { success: false, message: errorData.message || `Request failed (${response.status})` };
-    } catch {
-      return { success: false, message: `Request failed (${response.status})` };
-    }
+@layer base {
+  html {
+    font-family: 'Quicksand', sans-serif;
+    -webkit-tap-highlight-color: transparent;
   }
 
-  try {
-    return await response.json();
-  } catch {
-    return { success: false, message: 'Invalid response from server' };
+  body {
+    @apply antialiased;
+    color: #355574;
+    background-color: #f9f9f9;
   }
 }
 
-export async function callTimecardFunction(
-  path: string,
-  options: { method?: string; body?: Record<string, unknown>; authToken?: string } = {}
-) {
-  const { method, body, authToken } = options;
-  const resolvedMethod = method || (body ? 'POST' : 'GET');
-
-  const response = await fetch(`${TIMECARD_FUNCTION_URL}${path}`, {
-    method: resolvedMethod,
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${authToken || supabaseAnonKey}`,
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  });
-
-  if (!response.ok) {
-    try {
-      const errorData = await response.json();
-      return { success: false, message: errorData.message || `Request failed (${response.status})` };
-    } catch {
-      return { success: false, message: `Request failed (${response.status})` };
-    }
+@layer utilities {
+  .touch-manipulation {
+    touch-action: manipulation;
   }
+}
 
-  try {
-    return await response.json();
-  } catch {
-    return { success: false, message: 'Invalid response from server' };
+@keyframes slide-in {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
   }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.animate-slide-in {
+  animation: slide-in 0.3s ease-out;
+}
+
+.animate-fade-in {
+  animation: fade-in 0.2s ease-out;
 }

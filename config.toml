@@ -1,0 +1,8 @@
+[functions.timecard-reports]
+verify_jwt = false
+
+[functions.clock-operations]
+verify_jwt = false
+
+[functions.payroll-reminder-email]
+verify_jwt = false
