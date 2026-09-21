@@ -1,0 +1,2 @@
+employee_number,first_name,last_name,work_email,mobile_phone,job_title,hire_date,employment_status,termination_date,scheduler_employment_type,weekly_hour_goal,priority_tier,gender
+EMP-0001,Sample,Employee,sample.employee@example.com,+15555550100,Behavior Technician,2026-01-15,active,,full-time,35,1,other

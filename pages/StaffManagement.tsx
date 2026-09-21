@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { callEdgeFunction } from '../lib/supabase';
 import type { Staff } from '../lib/types';
-import { UserPlus, Edit3, Power, KeyRound, X } from 'lucide-react';
+import { UserPlus, Edit3, Power, KeyRound, X, Download } from 'lucide-react';
 import { Toast } from '../components/Toast';
 
 export function StaffManagement() {
@@ -22,6 +22,62 @@ export function StaffManagement() {
     const { data } = await supabase.from('staff').select('*').order('name');
     if (data) setStaffList(data);
     setLoading(false);
+  }
+
+  function csvEscape(value: string | number | null | undefined): string {
+    if (value === null || value === undefined) return '';
+    const s = String(value);
+    if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+    return s;
+  }
+
+  async function handleExportEmployees() {
+    const { data, error } = await supabase
+      .from('staff')
+      .select('employee_number, name, email, phone, is_active, created_at')
+      .order('employee_number', { ascending: true, nullsFirst: false });
+
+    if (error || !data) {
+      setToast({ message: 'Failed to export employees', type: 'error' });
+      return;
+    }
+
+    const headers = ['employee_number','first_name','last_name','work_email','mobile_phone','job_title','hire_date','employment_status','termination_date','scheduler_employment_type','weekly_hour_goal','priority_tier','gender'];
+    const rows = data.map(s => {
+      const fullName = (s.name || '').trim();
+      const parts = fullName.split(/\s+/);
+      const firstName = parts.shift() || '';
+      const lastName = parts.join(' ');
+      const hireDate = s.created_at ? new Date(s.created_at).toISOString().slice(0, 10) : '';
+      const status = s.is_active ? 'active' : 'terminated';
+      return [
+        s.employee_number || '',
+        firstName,
+        lastName,
+        s.email || '',
+        s.phone || '',
+        '',
+        hireDate,
+        status,
+        '',
+        '',
+        '',
+        '',
+        '',
+      ].map(csvEscape).join(',');
+    });
+
+    const csv = [headers.join(','), ...rows].join('\r\n') + '\r\n';
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `moja-employees-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    setToast({ message: `Exported ${data.length} employee${data.length === 1 ? '' : 's'}`, type: 'success' });
   }
 
   async function toggleActive(staff: Staff) {
@@ -87,13 +143,22 @@ export function StaffManagement() {
 
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold text-moja-blue">Manage Staff</h2>
-        <a
-          href="#/admin/invitations"
-          className="inline-flex items-center gap-2 px-5 py-3 bg-moja-orange text-white rounded-xl font-bold hover:bg-moja-orange/90 active:scale-[0.98] transition-all touch-manipulation"
-        >
-          <UserPlus className="w-5 h-5" />
-          Invite New Staff Member
-        </a>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleExportEmployees}
+            className="inline-flex items-center gap-2 px-4 py-3 bg-white border-2 border-moja-blue/20 text-moja-blue rounded-xl font-bold hover:border-moja-blue hover:bg-moja-blue/5 active:scale-[0.98] transition-all touch-manipulation"
+          >
+            <Download className="w-5 h-5" />
+            Export Employees
+          </button>
+          <a
+            href="#/admin/invitations"
+            className="inline-flex items-center gap-2 px-5 py-3 bg-moja-orange text-white rounded-xl font-bold hover:bg-moja-orange/90 active:scale-[0.98] transition-all touch-manipulation"
+          >
+            <UserPlus className="w-5 h-5" />
+            Invite New Staff Member
+          </a>
+        </div>
       </div>
 
       <div className="bg-white rounded-xl border border-gray-100 overflow-hidden shadow-sm">
