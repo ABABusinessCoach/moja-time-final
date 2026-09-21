@@ -74,6 +74,21 @@ function getPayPeriodForDate(date: Date): { start: string; end: string } {
   return { start: fmtDate(payPeriodStart), end: fmtDate(payPeriodEnd) };
 }
 
+function estTodayDateStr(): string {
+  const now = new Date();
+  const y = now.toLocaleString('en-US', { timeZone: 'America/New_York', year: 'numeric' });
+  const m = now.toLocaleString('en-US', { timeZone: 'America/New_York', month: '2-digit' });
+  const d = now.toLocaleString('en-US', { timeZone: 'America/New_York', day: '2-digit' });
+  return `${y}-${m}-${d}`;
+}
+
+async function isReportEditable(supabase: ReturnType<typeof createClient>, payPeriodId: string, reportStatus: string): Promise<boolean> {
+  if (reportStatus === "approved") return false;
+  const { data: pp } = await supabase.from("pay_periods").select("end_date").eq("id", payPeriodId).maybeSingle();
+  if (!pp) return false;
+  return estTodayDateStr() <= pp.end_date;
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 200, headers: corsHeaders });
@@ -842,12 +857,12 @@ Deno.serve(async (req: Request) => {
 
       const { data: report } = await supabase
         .from("timecard_reports")
-        .select("id, status, staff_id")
+        .select("id, status, staff_id, pay_period_id")
         .eq("access_token", access_token)
         .maybeSingle();
 
       if (!report) return json({ success: false, message: "Report not found" }, 404);
-      if (report.status === "approved" || report.status === "employee_approved") return json({ success: false, message: "Report already approved" }, 400);
+      if (!(await isReportEditable(supabase, report.pay_period_id, report.status))) return json({ success: false, message: "This pay period is closed for edits" }, 400);
 
       // Get original shift data
       const { data: shift } = await supabase
@@ -939,12 +954,12 @@ Deno.serve(async (req: Request) => {
 
       const { data: report } = await supabase
         .from("timecard_reports")
-        .select("id, status")
+        .select("id, status, pay_period_id")
         .eq("access_token", access_token)
         .maybeSingle();
 
       if (!report) return json({ success: false, message: "Report not found" }, 404);
-      if (report.status === "approved" || report.status === "employee_approved") return json({ success: false, message: "Report already approved" }, 400);
+      if (!(await isReportEditable(supabase, report.pay_period_id, report.status))) return json({ success: false, message: "This pay period is closed for edits" }, 400);
 
       await supabase
         .from("timecard_corrections")
@@ -1202,8 +1217,8 @@ Deno.serve(async (req: Request) => {
         .maybeSingle();
 
       if (!report) return json({ success: false, message: "Report not found" }, 404);
-      if (report.status === "approved" || report.status === "employee_approved") {
-        return json({ success: false, message: "Report already approved" }, 400);
+      if (!(await isReportEditable(supabase, report.pay_period_id, report.status))) {
+        return json({ success: false, message: "This pay period is closed for edits" }, 400);
       }
 
       // Calculate times and duration
