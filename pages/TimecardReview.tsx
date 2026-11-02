@@ -693,24 +693,33 @@ export function TimecardReview() {
                     </tr>
                     <tr className="border-t border-gray-100">
                       <td className="py-2.5 px-2 font-medium text-gray-500">Pay Code</td>
-                      {week.days.map(day => {
-                        const codes = Array.from(new Set(day.shiftRows.map(sr => sr.shift.pay_code).filter((c): c is string => !!c)));
-                        return (
-                          <td key={day.dateKey} className="py-2.5 px-1 text-center">
-                            {codes.length > 0 ? (
-                              <div className="flex flex-wrap justify-center gap-1">
-                                {codes.map(code => (
-                                  <span key={code} title={payCodeLabel(code)} className="inline-block px-1.5 py-0.5 rounded-md bg-moja-blue/10 text-moja-blue text-[10px] font-bold tracking-wide">
-                                    {code}
-                                  </span>
-                                ))}
-                              </div>
-                            ) : (
-                              <span className="text-gray-300">-</span>
-                            )}
-                          </td>
-                        );
-                      })}
+                      {week.days.map(day => (
+                        <td key={day.dateKey} className="py-2 px-1 text-center">
+                          {day.shiftRows.length > 0 ? (
+                            <div className="flex flex-wrap justify-center gap-1">
+                              {day.shiftRows.map((sr, i) => (
+                                <button
+                                  key={sr.shift.id}
+                                  type="button"
+                                  onClick={() => openAdminEditModal(sr.shift)}
+                                  title={sr.shift.pay_code
+                                    ? `${payCodeLabel(sr.shift.pay_code)}${day.shiftRows.length > 1 ? ` - shift ${i + 1}` : ''} (click to change)`
+                                    : `Set pay code${day.shiftRows.length > 1 ? ` for shift ${i + 1}` : ''}`}
+                                  className={`inline-block px-1.5 py-0.5 rounded-md text-[10px] font-bold tracking-wide transition-colors ${
+                                    sr.shift.pay_code
+                                      ? 'bg-moja-blue/10 text-moja-blue hover:bg-moja-blue/20'
+                                      : 'border border-dashed border-gray-300 text-gray-400 hover:border-moja-blue hover:text-moja-blue'
+                                  }`}
+                                >
+                                  {sr.shift.pay_code || (day.shiftRows.length > 1 ? `Set ${i + 1}` : 'Set')}
+                                </button>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="text-gray-300">-</span>
+                          )}
+                        </td>
+                      ))}
                     </tr>
                   </tbody>
                 </table>
