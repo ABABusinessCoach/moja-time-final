@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase';
 import { callTimecardFunction } from '../lib/supabase';
 import { getPayPeriodList } from '../lib/payPeriod';
 import { formatHM } from '../lib/formatTime';
-import { Download, CalendarRange, Loader2, X } from 'lucide-react';
+import { CalendarRange, Loader2, X, ShieldCheck, Database } from 'lucide-react';
 import type { Staff, ClockLog, BreakLog } from '../lib/types';
 
 const DAY_NAMES = ['Sat', 'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
@@ -51,6 +51,21 @@ interface DayData {
   otMinutes: number;
 }
 
+type ExportMode = 'approved' | 'raw';
+
+const TIMECARD_STATUS_LABELS: Record<string, string> = {
+  approved: 'Approved',
+  employee_approved: 'Employee Approved',
+  has_notes: 'Has Notes',
+  pending_review: 'Pending',
+};
+
+const CORRECTION_STATUS_LABELS: Record<string, string> = {
+  approved: 'Approved',
+  pending: 'Pending',
+  rejected: 'Rejected',
+};
+
 function downloadBlob(csv: string, filename: string) {
   const blob = new Blob([csv], { type: 'text/csv' });
   const url = URL.createObjectURL(blob);
@@ -79,7 +94,8 @@ export function WeeklyReports() {
   const [rangeEnd, setRangeEnd] = useState(() => new Date().toISOString().split('T')[0]);
   const [rangeStaff, setRangeStaff] = useState('');
   const [staffList, setStaffList] = useState<Staff[]>([]);
-  const [rangeExporting, setRangeExporting] = useState(false);
+  const [rangeExporting, setRangeExporting] = useState<ExportMode | null>(null);
+  const [rangeError, setRangeError] = useState('');
 
   const activePeriod = payPeriodOptions.find(p => p.start === periodFilter) || payPeriodOptions[0];
 
@@ -217,9 +233,10 @@ export function WeeklyReports() {
     setLoading(false);
   }
 
-  async function exportDateRangeCSV() {
+  async function exportDateRangeCSV(mode: ExportMode) {
     if (!rangeStart || !rangeEnd) return;
-    setRangeExporting(true);
+    setRangeExporting(mode);
+    setRangeError('');
 
     try {
       const nyDateFmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' });
@@ -230,21 +247,52 @@ export function WeeklyReports() {
       const endDate = new Date(`${rangeEnd}T23:59:59Z`);
       endDate.setUTCDate(endDate.getUTCDate() + 1);
 
-      const [staffRes, logsRes, breaksRes, corrRes] = await Promise.all([
+      const [staffRes, logsRes, breaksRes, corrRes, periodsRes] = await Promise.all([
         supabase.from('staff').select('*').order('name'),
         supabase.from('clock_logs').select('*').gte('clock_in_time', startDate.toISOString()).lte('clock_in_time', endDate.toISOString()).order('clock_in_time'),
         supabase.from('break_logs').select('*').gte('break_start', startDate.toISOString()).lte('break_start', endDate.toISOString()),
-        supabase.from('timecard_corrections').select('clock_log_id, proposed_duration_minutes').eq('approval_status', 'approved').not('clock_log_id', 'is', null),
+        supabase.from('timecard_corrections').select('clock_log_id, proposed_duration_minutes, approval_status, created_at').not('clock_log_id', 'is', null).order('created_at'),
+        supabase.from('pay_periods').select('id, start_date, end_date').lte('start_date', rangeEnd).gte('end_date', rangeStart),
       ]);
+
+      if (staffRes.error || logsRes.error || breaksRes.error || corrRes.error || periodsRes.error) {
+        setRangeError('Could not load timecard data. Please try again.');
+        return;
+      }
+
+      const periods: { id: string; start_date: string; end_date: string }[] = periodsRes.data || [];
+      const reportsRes = periods.length > 0
+        ? await supabase.from('timecard_reports').select('staff_id, pay_period_id, status').in('pay_period_id', periods.map(p => p.id))
+        : { data: [], error: null };
+      if (reportsRes.error) {
+        setRangeError('Could not load timecard approval status. Please try again.');
+        return;
+      }
+
+      const reportStatus = new Map<string, string>();
+      (reportsRes.data || []).forEach((r: { staff_id: string; pay_period_id: string; status: string }) => {
+        reportStatus.set(`${r.staff_id}|${r.pay_period_id}`, r.status);
+      });
+      const timecardStatusFor = (staffId: string, dateStr: string) => {
+        const period = periods.find(p => p.start_date <= dateStr && p.end_date >= dateStr);
+        return period ? reportStatus.get(`${staffId}|${period.id}`) || null : null;
+      };
 
       const allStaff: Staff[] = staffRes.data || [];
       let rangeLogs: ClockLog[] = logsRes.data || [];
       const rangeBreaks: BreakLog[] = breaksRes.data || [];
-      const rangeCorrMap = new Map((corrRes.data || []).map((c: { clock_log_id: string; proposed_duration_minutes: number }) => [c.clock_log_id, c.proposed_duration_minutes]));
+      const allCorrections: { clock_log_id: string; proposed_duration_minutes: number; approval_status: string }[] = corrRes.data || [];
+      const rangeCorrMap = new Map(
+        mode === 'approved'
+          ? allCorrections.filter(c => c.approval_status === 'approved').map(c => [c.clock_log_id, c.proposed_duration_minutes] as const)
+          : []
+      );
+      const latestCorrStatus = new Map(allCorrections.map(c => [c.clock_log_id, c.approval_status] as const));
 
       rangeLogs = rangeLogs.filter(l => {
         const d = nyDateStr(new Date(l.clock_in_time));
-        return d >= rangeStart && d <= rangeEnd;
+        if (d < rangeStart || d > rangeEnd) return false;
+        return mode === 'raw' || timecardStatusFor(l.staff_id, d) === 'approved';
       });
 
       if (rangeStaff) {
@@ -268,6 +316,7 @@ export function WeeklyReports() {
       };
 
       const header = ['Employee Name', 'Employee #', 'Date', 'Clock In', 'Clock Out', 'Raw Time', 'Break', 'Lunch', 'Final Hours', 'Overtime', 'Week Ending', '', '', 'Notes'];
+      if (mode === 'raw') header.push('Timecard Status', 'Correction Request');
       const rows: string[][] = [header];
       const emptyRow = header.map(() => '');
 
@@ -286,6 +335,12 @@ export function WeeklyReports() {
           const weekKey = utcNoon.toISOString().split('T')[0];
           const weekEndingMDY = toMDY(weekKey);
           const dateMDY = toMDY(date);
+          const rawExtras = mode === 'raw'
+            ? [
+                TIMECARD_STATUS_LABELS[timecardStatusFor(staff.id, date) || ''] || 'No Timecard',
+                CORRECTION_STATUS_LABELS[latestCorrStatus.get(log.id) || ''] || '',
+              ]
+            : [];
 
           const rawMinutes = clockOut ? (clockOut.getTime() - clockIn.getTime()) / 60000 : 0;
 
@@ -335,6 +390,7 @@ export function WeeklyReports() {
                 '',
                 '',
                 idx === 0 ? (log.notes || '') : '',
+                ...rawExtras,
               ]);
             });
           } else {
@@ -353,6 +409,7 @@ export function WeeklyReports() {
               '',
               '',
               log.notes || '',
+              ...rawExtras,
             ]);
           }
         });
@@ -360,11 +417,12 @@ export function WeeklyReports() {
         rows.push([...emptyRow]);
       });
 
-      const csv = rows.map(r => r.map(c => `"${c}"`).join(',')).join('\n');
-      const filename = `moja_timesheet_${rangeStart.replace(/-/g, '')}_to_${rangeEnd.replace(/-/g, '')}.csv`;
+      const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+      const prefix = mode === 'approved' ? 'moja_timesheet_approved' : 'moja_timesheet_raw';
+      const filename = `${prefix}_${rangeStart.replace(/-/g, '')}_to_${rangeEnd.replace(/-/g, '')}.csv`;
       downloadBlob(csv, filename);
     } finally {
-      setRangeExporting(false);
+      setRangeExporting(null);
     }
   }
 
@@ -427,14 +485,29 @@ export function WeeklyReports() {
               </select>
             </div>
             <button
-              onClick={exportDateRangeCSV}
-              disabled={rangeExporting || !rangeStart || !rangeEnd}
-              className="inline-flex items-center gap-2 px-5 h-10 bg-moja-aqua text-white rounded-lg text-sm font-bold hover:bg-moja-aqua/90 transition-all disabled:opacity-50"
+              onClick={() => exportDateRangeCSV('approved')}
+              disabled={rangeExporting !== null || !rangeStart || !rangeEnd}
+              title="Only timecards you have approved, with approved corrections applied"
+              className="inline-flex items-center gap-2 px-5 h-10 bg-moja-aqua text-white rounded-lg text-sm font-bold hover:bg-moja-aqua/90 active:scale-[0.98] transition-all disabled:opacity-50"
             >
-              {rangeExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-              {rangeExporting ? 'Generating...' : 'Download'}
+              {rangeExporting === 'approved' ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
+              {rangeExporting === 'approved' ? 'Generating...' : 'Approved'}
+            </button>
+            <button
+              onClick={() => exportDateRangeCSV('raw')}
+              disabled={rangeExporting !== null || !rangeStart || !rangeEnd}
+              title="Every clock entry as recorded, including timecards not yet approved"
+              className="inline-flex items-center gap-2 px-5 h-10 bg-white border-2 border-moja-blue/20 text-moja-blue rounded-lg text-sm font-bold hover:border-moja-blue hover:bg-moja-blue/5 active:scale-[0.98] transition-all disabled:opacity-50"
+            >
+              {rangeExporting === 'raw' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Database className="w-4 h-4" />}
+              {rangeExporting === 'raw' ? 'Generating...' : 'Raw Data'}
             </button>
           </div>
+          <p className="mt-3 text-xs text-gray-500 leading-relaxed">
+            <span className="font-bold text-gray-600">Approved</span> includes only timecards you have approved, with approved corrections applied.{' '}
+            <span className="font-bold text-gray-600">Raw Data</span> includes every clock entry as recorded, plus each timecard's approval status.
+          </p>
+          {rangeError && <p className="mt-2 text-sm font-semibold text-red-600">{rangeError}</p>}
         </div>
       )}
 
