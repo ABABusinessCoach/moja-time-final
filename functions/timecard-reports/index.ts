@@ -9,6 +9,18 @@ const corsHeaders = {
     "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
+const PAY_CODES = new Set([
+  "1099NEC", "BD", "BO", "FLH", "HO", "HOW", "MI", "OTP", "OT", "PTO",
+  "RG", "REIM", "SA", "SK", "TR", "UNPAID", "VA", "VOL", "WELLNESS",
+]);
+
+// undefined = leave unchanged, null = "(none)", false = invalid
+function parsePayCode(value: unknown): string | null | undefined | false {
+  if (value === undefined) return undefined;
+  if (value === null || value === "") return null;
+  return typeof value === "string" && PAY_CODES.has(value) ? value : false;
+}
+
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
@@ -1014,8 +1026,10 @@ Deno.serve(async (req: Request) => {
         .maybeSingle();
       if (!admin) return json({ success: false, message: "Not an admin" }, 403);
 
-      const { report_id, clock_log_id, proposed_clock_in, proposed_clock_out, break_edits, lunch_edits, note } = await req.json();
+      const { report_id, clock_log_id, proposed_clock_in, proposed_clock_out, break_edits, lunch_edits, note, pay_code } = await req.json();
       if (!report_id || !clock_log_id) return json({ success: false, message: "report_id and clock_log_id required" }, 400);
+      const payCode = parsePayCode(pay_code);
+      if (payCode === false) return json({ success: false, message: "Invalid pay code" }, 400);
 
       const { data: report } = await supabase
         .from("timecard_reports")
@@ -1068,6 +1082,15 @@ Deno.serve(async (req: Request) => {
         });
 
       if (corrErr) return json({ success: false, message: corrErr.message }, 500);
+
+      if (payCode !== undefined) {
+        const { error: payCodeErr } = await supabase
+          .from("clock_logs")
+          .update({ pay_code: payCode })
+          .eq("id", clock_log_id)
+          .eq("staff_id", report.staff_id);
+        if (payCodeErr) return json({ success: false, message: payCodeErr.message }, 500);
+      }
 
       // Handle break time edits
       if (break_edits) {
@@ -1312,8 +1335,10 @@ Deno.serve(async (req: Request) => {
         .maybeSingle();
       if (!admin) return json({ success: false, message: "Not an admin" }, 403);
 
-      const { report_id, date, proposed_clock_in, proposed_clock_out, proposed_hours, break_start, break_end, lunch_start, lunch_end, note } = await req.json();
+      const { report_id, date, proposed_clock_in, proposed_clock_out, proposed_hours, break_start, break_end, lunch_start, lunch_end, note, pay_code } = await req.json();
       if (!report_id || !date) return json({ success: false, message: "report_id and date required" }, 400);
+      const payCode = parsePayCode(pay_code);
+      if (payCode === false) return json({ success: false, message: "Invalid pay code" }, 400);
 
       const { data: report } = await supabase
         .from("timecard_reports")
@@ -1356,6 +1381,7 @@ Deno.serve(async (req: Request) => {
           duration_minutes: durationMins,
           week_ending: getWeekEnding(new Date(clockIn)),
           notes: note?.trim() ? `[Admin entry] ${note.trim()}` : "[Admin entry]",
+          pay_code: payCode ?? null,
         })
         .select("id")
         .single();
@@ -2043,7 +2069,7 @@ Deno.serve(async (req: Request) => {
 
       const { data: shifts } = await supabase
         .from("clock_logs")
-        .select("id, clock_in_time, clock_out_time, duration_minutes, notes")
+        .select("id, clock_in_time, clock_out_time, duration_minutes, notes, pay_code")
         .eq("staff_id", report.staff_id)
         .gte("clock_in_time", payPeriod!.start_date + "T00:00:00")
         .lte("clock_in_time", payPeriod!.end_date + "T23:59:59")

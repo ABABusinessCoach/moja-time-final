@@ -1,0 +1,17 @@
+{
+  "projectId": "67276796",
+  "functions": {
+    "clock-operations": {
+      "hasChanged": false,
+      "hash": "558c4bae671572557fab22d96cdc55c6ac7328f67b698431561149b0d22c8952"
+    },
+    "payroll-reminder-email": {
+      "hasChanged": false,
+      "hash": "d648e55135b3df9aa51c69e43189b2e01e90713c647285d2d605f09412e20f7a"
+    },
+    "timecard-reports": {
+      "hasChanged": false,
+      "hash": "b4c145debd9c984a28fcd2a029e75a6ad83b6b26635997f9f081d0ca20a73e2b"
+    }
+  }
+}
