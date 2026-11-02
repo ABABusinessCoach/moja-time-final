@@ -19,6 +19,7 @@ export interface ClockLog {
   week_ending: string;
   notes: string;
   flagged: boolean;
+  pay_code: string | null;
   created_at: string;
   staff?: { name: string };
 }

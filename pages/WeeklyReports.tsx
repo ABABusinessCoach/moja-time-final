@@ -315,7 +315,7 @@ export function WeeklyReports() {
         return `${m}/${d}/${y}`;
       };
 
-      const header = ['Employee Name', 'Employee #', 'Date', 'Clock In', 'Clock Out', 'Raw Time', 'Break', 'Lunch', 'Final Hours', 'Overtime', 'Week Ending', '', '', 'Notes'];
+      const header = ['Employee Name', 'Employee #', 'Date', 'Clock In', 'Clock Out', 'Raw Time', 'Break', 'Lunch', 'Final Hours', 'Overtime', 'Week Ending', '', '', 'Notes', 'Pay Code'];
       if (mode === 'raw') header.push('Timecard Status', 'Correction Request');
       const rows: string[][] = [header];
       const emptyRow = header.map(() => '');
@@ -390,6 +390,7 @@ export function WeeklyReports() {
                 '',
                 '',
                 idx === 0 ? (log.notes || '') : '',
+                log.pay_code || '',
                 ...rawExtras,
               ]);
             });
@@ -409,6 +410,7 @@ export function WeeklyReports() {
               '',
               '',
               log.notes || '',
+              log.pay_code || '',
               ...rawExtras,
             ]);
           }

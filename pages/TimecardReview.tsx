@@ -6,6 +6,8 @@ import { callTimecardFunction } from '../lib/supabase';
 import { supabase } from '../lib/supabase';
 import { getPayPeriodForDate, getPayPeriodList } from '../lib/payPeriod';
 import { formatHM, formatHMFromHours } from '../lib/formatTime';
+import { PayCodeSelect } from '../components/PayCodeSelect';
+import { payCodeLabel } from '../lib/payCodes';
 
 interface ShiftNote {
   id: string;
@@ -54,6 +56,7 @@ interface Shift {
   clock_out_time: string | null;
   duration_minutes: number | null;
   notes: string | null;
+  pay_code: string | null;
 }
 
 interface BreakLog {
@@ -264,11 +267,13 @@ export function TimecardReview() {
   const [editLunchOut, setEditLunchOut] = useState('');
   const [editLunchIn, setEditLunchIn] = useState('');
   const [editNote, setEditNote] = useState('');
+  const [editPayCode, setEditPayCode] = useState('');
   const [savingCorrection, setSavingCorrection] = useState(false);
 
   // Admin add shift (empty day) state
   const [adminAddDate, setAdminAddDate] = useState<string | null>(null);
   const [adminAddNote, setAdminAddNote] = useState('');
+  const [adminAddPayCode, setAdminAddPayCode] = useState('');
   const [adminAddClockIn, setAdminAddClockIn] = useState('');
   const [adminAddClockOut, setAdminAddClockOut] = useState('');
   const [adminAddBreakOut, setAdminAddBreakOut] = useState('');
@@ -401,6 +406,7 @@ export function TimecardReview() {
 
   function openAdminEditModal(shift: Shift) {
     setEditingShift(shift);
+    setEditPayCode(shift.pay_code || '');
     const existingCorr = selectedReport?.corrections.find(c => c.clock_log_id === shift.id);
     if (existingCorr) {
       setEditClockIn(toESTInputTime(existingCorr.proposed_clock_in));
@@ -424,6 +430,7 @@ export function TimecardReview() {
   function openAdminAddShiftModal(dateKey: string) {
     setAdminAddDate(dateKey);
     setAdminAddNote('');
+    setAdminAddPayCode('');
     setAdminAddClockIn('');
     setAdminAddClockOut('');
     setAdminAddBreakOut('');
@@ -443,6 +450,7 @@ export function TimecardReview() {
       report_id: selectedReport.report.id,
       date: adminAddDate,
       note: adminAddNote.trim() || undefined,
+      pay_code: adminAddPayCode || null,
       proposed_clock_in: toISOFromESTTime(adminAddDate, adminAddClockIn),
       proposed_clock_out: toISOFromESTTime(adminAddDate, adminAddClockOut),
     };
@@ -526,6 +534,7 @@ export function TimecardReview() {
           lunch_end: editLunchIn ? toISOFromESTTime(shiftDate, editLunchIn) : null,
         },
         note: editNote.trim() || null,
+        pay_code: editPayCode || null,
       },
       authToken: token,
     });
@@ -681,6 +690,27 @@ export function TimecardReview() {
                           {day.netMinutes > 0 ? formatHM(day.netMinutes) : '0h 00m'}
                         </td>
                       ))}
+                    </tr>
+                    <tr className="border-t border-gray-100">
+                      <td className="py-2.5 px-2 font-medium text-gray-500">Pay Code</td>
+                      {week.days.map(day => {
+                        const codes = Array.from(new Set(day.shiftRows.map(sr => sr.shift.pay_code).filter((c): c is string => !!c)));
+                        return (
+                          <td key={day.dateKey} className="py-2.5 px-1 text-center">
+                            {codes.length > 0 ? (
+                              <div className="flex flex-wrap justify-center gap-1">
+                                {codes.map(code => (
+                                  <span key={code} title={payCodeLabel(code)} className="inline-block px-1.5 py-0.5 rounded-md bg-moja-blue/10 text-moja-blue text-[10px] font-bold tracking-wide">
+                                    {code}
+                                  </span>
+                                ))}
+                              </div>
+                            ) : (
+                              <span className="text-gray-300">-</span>
+                            )}
+                          </td>
+                        );
+                      })}
                     </tr>
                   </tbody>
                 </table>
@@ -1006,6 +1036,7 @@ export function TimecardReview() {
                     </div>
                   );
                 })()}
+                <PayCodeSelect value={editPayCode} onChange={setEditPayCode} />
                 <div>
                   <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1 block">Note (optional)</label>
                   <textarea
@@ -1153,6 +1184,7 @@ export function TimecardReview() {
                     </div>
                   );
                 })()}
+                <PayCodeSelect value={adminAddPayCode} onChange={setAdminAddPayCode} />
                 <div>
                   <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1 block">Note (optional)</label>
                   <textarea
